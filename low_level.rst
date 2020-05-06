@@ -1,0 +1,503 @@
+.. _low_level:
+
+The Low-level io_uring Interface
+================================
+Like suggested in the previous session, you are unlikely to use the low-level ``io_uring`` API in serious programs. But it is always a good idea to know what kind of an interface ``io_uring`` really presents. For this, you'll have to play around the interface ``io_uring`` directly presents to programs via the shared ring buffers and the ``io_uring`` system calls. A good example and a simple one at that can present this interface well. To this end, here, we present an example that emulates the Unix ``cat`` utility. To keep things simple, we shall create a program that presents ``io_uring`` one operation at a time, waits for it to finish and presents the next operation and so on. While a real program might as well use synchronous/blocking calls to get work done this way, the main aim of this program is to familiarize you with the ``io_uring`` interface without other program logic potentially getting in the way.
+
+Familiarity with the :c:func:`readv` system call
+------------------------------------------------
+To get a good understanding of this example, you will need to be familiar with the `readv <http://man7.org/linux/man-pages/man2/readv.2.html>`_ system call. If you aren't familiar with it, I suggest you read `a more gentler <https://unixism.net/2020/04/io-uring-by-example-part-1-introduction/>`_ introduction and then return back here to continue.
+
+Introduction to the low-level interface
+---------------------------------------
+``io_uring``‘s interface is simple. There is a submission queue and there is a completion queue. In the submission queue, you submit information on various operations you want to get done. For example, for our current program, we want to read files with :c:func:`readv`, so we place a submission queue request describing it as part of a submission queue entry (SQE). Since it is a queue, you can place many requests. As many as the queue depth (which you can define) will allow. These operations can be a mix of reads, writes, etc. Then, we call the :c:func:`io_uring_enter` system call to tell the kernel that we’ve added requests to the submission queue. The kernel then does its jujitsu and once it has done processing those requests, it places results in the completion queue as part of a CQE or a completion queue entry one for each corresponding SQE. These CQEs can be accessed from user space.
+
+We covered this particular advantage of ``io_uring`` earlier, but the astute reader would have noticed that this interface of filling up a queue with multiple I/O requests and then making a single system call as opposed to one system call for each I/O request is already more efficient. To take efficiency a notch further up, io_uring support a mode where the kernel polls for entries you make into the submission queue without you even having to call io_uring_enter() to inform the kernel about newer submission queue entries. Another point to note is that in a life after Specter and Meltdown hardware vulnerabilities were discovered and operating systems created workarounds for it, system calls are more expensive than ever. So, for high performance applications, reducing the number of system calls is a big deal indeed.
+
+Before you can do any of this, you need to setup the queues, which really are ring buffers with a certain depth/length. You call the :c:func:`io_uring_setup` system call to get this done. We do real work by adding submission queue entries to a ring buffer and reading completion queue entries off of the completion queue ring buffer. This is an overview of how this io_uring interface is designed.
+
+Completion Queue Entry
+^^^^^^^^^^^^^^^^^^^^^^
+Now that we have a mental model of how things work, let’s look at how this is done in a bit more detail. Compared to the submission queue entry (SQE), the completion queue entry (CQE) is very simple. So, let’s look at it first. The SQE is a ``struct`` using which you submit requests. You add it to the submission ring buffer. The CQE is an instance of a ``struct`` which the kernel responds with for every SQE ``struct`` instance that is added to the submission queue. This contains the results of the operation you requested via an SQE instance.
+
+.. code-block:: c
+
+    struct io_uring_cqe {
+      __u64  user_data;   /* sqe->user_data submission passed back */
+      __s32  res;         /* result code for this event */
+      __u32  flags;
+    };
+
+As mentioned in the code comment, the user_data field is something that is passed as-is from the SQE to the CQE instance. Let’s say you submit a bunch of requests in the submission queue, it is not necessary that they complete in the same order and arrive on the completion queue. Take the following scenario for instance: You have tow disks on your machine: one is a slower spinning hard drive and another is a super-fast SSD. You submit 2 requests on the submission queue. The first one to read a 100kB file on the slower spinning hard disk and the second one to read a file of the same size on the faster SSD. If ordering were to be maintained, even though the data from the file on the SSD can be expected to arrive sooner, should the kernel wait for data from the file on the spinning hard drive to become available? Bad idea because this stops us from running as fast as we can. So, CQEs can arrive in any order as they become available. Whichever operation finishes quickly, it is immediately made available. Since there is no specified order in which CQEs arrive, given that now you know how a CQE looks like from the ``struct io_uring_cqe`` above, how do you identify the which SQE request a particular CQE corresponds to? One way to do that is to use the user_data field to identify it. Not that you’d set a unique ID or something, but you’d usually pass a pointer. If this is confusing, just wait till you see a clear example later on here.
+
+The completion queue entry is simple since it mainly concerns itself with a system call’s return value, which is returned in its res field. For example, if you queued a read operation, on successful completion, it would contain the number of bytes read. If there was an error, it would contain a negative error number. Essentially what the read() system call itself would return.
+
+Ordering
+^^^^^^^^
+While I did mention that can CQEs arrive in any order, you can force ordering of certain operations with SQE ordering, in effect chaining them. I won’t be discussing ordering in this article series, but you can read the current canonical ``io_uring`` reference to see how to do this.
+
+Submission Queue Entry
+^^^^^^^^^^^^^^^^^^^^^^
+The submission queue entry is a bit more complex than a completion queue entry since it needs to be generic enough to represent and deal with a wide range of I/O operations possible with Linux today.
+
+.. code-block:: c
+
+  struct io_uring_sqe {
+    __u8  opcode;   /* type of operation for this sqe */
+    __u8  flags;    /* IOSQE_ flags */
+    __u16  ioprio;  /* ioprio for the request */
+    __s32  fd;      /* file descriptor to do IO on */
+    __u64  off;     /* offset into file */
+    __u64  addr;    /* pointer to buffer or iovecs */
+    __u32  len;     /* buffer size or number of iovecs */
+    union {
+      __kernel_rwf_t  rw_flags;
+      __u32    fsync_flags;
+      __u16    poll_events;
+      __u32    sync_range_flags;
+      __u32    msg_flags;
+    };
+    __u64  user_data;   /* data to be passed back at completion time */
+    union {
+      __u16  buf_index; /* index into fixed buffers, if used */
+      __u64  __pad2[3];
+    };
+  };
+
+I know the ``struct`` looks busy. The fields that are used more commonly are only a few and this is easily explained with a simple example such as the one we’re dealing with: cat. You want to read a file using the :c:func:`readv` system call.
+
+* opcode is used to specify the operation, in our case, :c:func:`readv` using the ``IORING_OP_READV`` constant.
+* ``fd`` is used to specify the file which we want to read from. Its open file descriptor is specified here
+* ``addr`` is used to point to the array of ``iovec`` structures that hold the addresses and lengths of the buffers we’ve allocated for I/O.
+* finally, ``len`` is used to hold the length of the arrays of ``iovec`` structures.
+
+Now that wasn’t too difficult, or was it? You fill these values letting io_uring know what to do. You can queue multiple SQEs and finally call io_uring_enter() when you want the kernel to start processing your requests.
+
+``cat`` with io_uring
+^^^^^^^^^^^^^^^^^^^^^
+Let’s see how to actually get this done in the ``io_uring`` version of our ``cat`` program.
+
+.. code-block:: c
+
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <sys/stat.h>
+  #include <sys/ioctl.h>
+  #include <sys/syscall.h>
+  #include <sys/mman.h>
+  #include <sys/uio.h>
+  #include <linux/fs.h>
+  #include <fcntl.h>
+  #include <unistd.h>
+  #include <string.h>
+
+  /* If your compilation fails because the header file below is missing,
+   * your kernel is probably too old to support io_uring.
+   * */
+  #include <linux/io_uring.h>
+  #define QUEUE_DEPTH 1
+  #define BLOCK_SZ    1024
+
+  /* This is x86 specific */
+  #define read_barrier()  __asm__ __volatile__("":::"memory")
+  #define write_barrier() __asm__ __volatile__("":::"memory")
+
+  struct app_io_sq_ring {
+      unsigned *head;
+      unsigned *tail;
+      unsigned *ring_mask;
+      unsigned *ring_entries;
+      unsigned *flags;
+      unsigned *array;
+  };
+
+  struct app_io_cq_ring {
+      unsigned *head;
+      unsigned *tail;
+      unsigned *ring_mask;
+      unsigned *ring_entries;
+      struct io_uring_cqe *cqes;
+  };
+  
+  struct submitter {
+      int ring_fd;
+      struct app_io_sq_ring sq_ring;
+      struct io_uring_sqe *sqes;
+      struct app_io_cq_ring cq_ring;
+  };
+  
+  struct file_info {
+      off_t file_sz;
+      struct iovec iovecs[];      /* Referred by readv/writev */
+  };
+  
+  /*
+   * This code is written in the days when io_uring-related system calls are not
+   * part of standard C libraries. So, we roll our own system call wrapper
+   * functions.
+   * */
+  int io_uring_setup(unsigned entries, struct io_uring_params *p)
+  {
+      return (int) syscall(__NR_io_uring_setup, entries, p);
+  }
+  int io_uring_enter(int ring_fd, unsigned int to_submit,
+                            unsigned int min_complete, unsigned int flags)
+  {
+      return (int) syscall(__NR_io_uring_enter, ring_fd, to_submit, min_complete,
+                     flags, NULL, 0);
+  }
+  
+  /*
+   * Returns the size of the file whose open file descriptor is passed in.
+   * Properly handles regular file and block devices as well. Pretty.
+   * */
+  off_t get_file_size(int fd) {
+      struct stat st;
+      if(fstat(fd, &st) < 0) {
+          perror("fstat");
+          return -1;
+      }
+      if (S_ISBLK(st.st_mode)) {
+          unsigned long long bytes;
+          if (ioctl(fd, BLKGETSIZE64, &bytes) != 0) {
+              perror("ioctl");
+              return -1;
+          }
+          return bytes;
+      } else if (S_ISREG(st.st_mode))
+          return st.st_size;
+      return -1;
+  }
+
+  /*
+   * io_uring requires a lot of setup which looks pretty hairy, but isn't all
+   * that difficult to understand. Because of all this boilerplate code,
+   * io_uring's author has created liburing, which is relatively easy to use.
+   * However, you should take your time and understand this code. It is always
+   * good to know how it all works underneath. Apart from bragging rights,
+   * it does offer you a certain strange geeky peace.
+   * */
+
+  int app_setup_uring(struct submitter *s) {
+      struct app_io_sq_ring *sring = &s->sq_ring;
+      struct app_io_cq_ring *cring = &s->cq_ring;
+      struct io_uring_params p;
+      void *ptr;
+      /*
+       * We need to pass in the io_uring_params structure to the io_uring_setup()
+       * call zeroed out. We could set any flags if we need to, but for this
+       * example, we don't.
+       * */
+      memset(&p, 0, sizeof(p));
+      s->ring_fd = io_uring_setup(QUEUE_DEPTH, &p);
+      if (s->ring_fd < 0) {
+          perror("io_uring_setup");
+          return 1;
+      }
+      /*
+       * io_uring communication happens via 2 shared kernel-user space ring
+       * buffers. While the completion queue is directly manipulated, the
+       * submission queue has an indirection array in between. We map that in as
+       * well.
+       * */
+      /* Map in the submission queue ring buffer */
+      ptr = mmap(0, p.sq_off.array + p.sq_entries * sizeof(__u32),
+              PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
+              s->ring_fd, IORING_OFF_SQ_RING);
+      if (ptr == MAP_FAILED) {
+          perror("mmap");
+          return 1;
+      }
+      /* Save useful fields in a global app_io_sq_ring struct for later
+       * easy reference */
+      sring->head = ptr + p.sq_off.head;
+      sring->tail = ptr + p.sq_off.tail;
+      sring->ring_mask = ptr + p.sq_off.ring_mask;
+      sring->ring_entries = ptr + p.sq_off.ring_entries;
+      sring->flags = ptr + p.sq_off.flags;
+      sring->array = ptr + p.sq_off.array;
+      /* Map in the submission queue entries array */
+      s->sqes = mmap(0, p.sq_entries * sizeof(struct io_uring_sqe),
+              PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
+              s->ring_fd, IORING_OFF_SQES);
+      if (s->sqes == MAP_FAILED) {
+          perror("mmap");
+          return 1;
+      }
+      /* Map in the completion queue ring buffer */
+      ptr = mmap(0,
+              p.cq_off.cqes + p.cq_entries * sizeof(struct io_uring_cqe),
+              PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
+              s->ring_fd, IORING_OFF_CQ_RING);
+      if (ptr == MAP_FAILED) {
+          perror("mmap");
+          return 1;
+      }
+      /* Save useful fields in a global app_io_cq_ring struct for later
+       * easy reference */
+      cring->head = ptr + p.cq_off.head;
+      cring->tail = ptr + p.cq_off.tail;
+      cring->ring_mask = ptr + p.cq_off.ring_mask;
+      cring->ring_entries = ptr + p.cq_off.ring_entries;
+      cring->cqes = ptr + p.cq_off.cqes;
+      return 0;
+  }
+
+  /*
+   * Output a string of characters of len length to stdout.
+   * We use buffered output here to be efficient,
+   * since we need to output character-by-character.
+   * */
+  void output_to_console(char *buf, int len) {
+      while (len--) {
+          fputc(*buf++, stdout);
+      }
+  }
+
+  /*
+   * Read from completion queue.
+   * In this function, we read completion events from the completion queue, get
+   * the data buffer that will have the file data and print it to the console.
+   * */
+  void read_from_cq(struct submitter *s) {
+      struct file_info *fi;
+      struct app_io_cq_ring *cring = &s->cq_ring;
+      struct io_uring_cqe *cqe;
+      unsigned head, reaped = 0;
+      head = *cring->head;
+      do {
+          read_barrier();
+          /*
+           * Remember, this is a ring buffer. If head == tail, it means that the
+           * buffer is empty.
+           * */
+          if (head == *cring->tail)
+              break;
+          /* Get the entry */
+          cqe = &cring->cqes[head & *s->cq_ring.ring_mask];
+          fi = (struct file_info*) cqe->user_data;
+          printf("res=%d\n", cqe->res);
+          if (cqe->res < 0)
+              fprintf(stderr, "Error: %s\n", strerror(abs(cqe->res)));
+          int blocks = (int) fi->file_sz / BLOCK_SZ;
+          if (fi->file_sz % BLOCK_SZ) blocks++;
+          for (int i = 0; i < blocks; i++)
+              output_to_console(fi->iovecs->iov_base, fi->iovecs[i].iov_len);
+          head++;
+      } while (1);
+      *cring->head = head;
+      write_barrier();
+  }
+
+  /*
+   * Submit to submission queue.
+   * In this function, we submit requests to the submission queue. You can submit
+   * many types of requests. Ours is going to be the readv() request, which we
+   * specify via IORING_OP_READV.
+   *
+   * */
+  int submit_to_sq(char *file_path, struct submitter *s) {
+      struct file_info *fi;
+      int file_fd = open(file_path, O_RDONLY);
+      if (file_fd < 0 ) {
+          perror("open");
+          return 1;
+      }
+      struct app_io_sq_ring *sring = &s->sq_ring;
+      unsigned index = 0, current_block = 0, tail = 0, next_tail = 0;
+      off_t offset = 0;
+      off_t file_sz = get_file_size(file_fd);
+      if (file_sz < 0)
+          return 1;
+      off_t bytes_remaining = file_sz;
+      int blocks = (int) file_sz / BLOCK_SZ;
+      if (file_sz % BLOCK_SZ) blocks++;
+      printf("File size: %ld blocks: %d\n", file_sz, blocks);
+      fi = malloc(sizeof(*fi));
+      if (!fi) {
+          fprintf(stderr, "Unable to allocate memory\n");
+          return 1;
+      }
+      fi->file_sz = file_sz;
+      /*
+       * For each block of the file we need to read, we allocate an iovec struct
+       * which is indexed into the iovecs array. This array is passed in as part
+       * of the submission. If you don't understand this, then you need to look
+       * up how the readv() and writev() system calls work.
+       * */
+      while (bytes_remaining) {
+          off_t bytes_to_read = bytes_remaining;
+          if (bytes_to_read > BLOCK_SZ)
+              bytes_to_read = BLOCK_SZ;
+          offset += bytes_to_read;
+          fi->iovecs[current_block].iov_len = bytes_to_read;
+          void *buf;
+          if( posix_memalign(&buf, BLOCK_SZ, BLOCK_SZ)) {
+              perror("posix_memalign");
+              return 1;
+          }
+          fi->iovecs[current_block].iov_base = buf;
+          current_block++;
+          bytes_remaining -= bytes_to_read;
+      }
+      printf("Total number of iovec blocks: %d\n", current_block);
+      /* Add our submission queue entry to the tail of the SQE ring buffer */
+      next_tail = tail = *sring->tail;
+      next_tail++;
+      read_barrier();
+      index = tail & *s->sq_ring.ring_mask;
+      struct io_uring_sqe *sqe = &s->sqes[index];
+      sqe->fd = file_fd;
+      sqe->flags = 0;
+      sqe->opcode = IORING_OP_READV;
+      sqe->addr = (unsigned long) fi->iovecs;
+      sqe->len = blocks;
+      sqe->off = 0;
+      sqe->user_data = (unsigned long long) fi;
+      sring->array[index] = index;
+      tail = next_tail;
+      /* Update the tail so the kernel can see it. */
+      if(*sring->tail != tail) {
+          *sring->tail = tail;
+          write_barrier();
+      }
+      /*
+       * Tell the kernel we have submitted events with the io_uring_enter() system'
+       * call. We also pass in the IOURING_ENTER_GETEVENTS flag which causes the
+       * io_uring_enter() call to wait until min_complete events (the 3rd param)
+       * complete.
+       * */
+      int ret =  io_uring_enter(s->ring_fd, 1,1,
+              IORING_ENTER_GETEVENTS);
+      if(ret < 0) {
+          perror("io_uring_enter");
+          return 1;
+      }
+      return 0;
+  }
+
+  int main(int argc, char *argv[]) {
+      struct submitter *s;
+      if (argc < 2) {
+          fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+          return 1;
+      }
+      s = malloc(sizeof(*s));
+      if (!s) {
+          perror("malloc");
+          return 1;
+      }
+      memset(s, 0, sizeof(*s));
+      if(app_setup_uring(s)) {
+          fprintf(stderr, "Unable to setup uring!\n");
+          return 1;
+      }
+      for (int i = 1; i < argc; i++) {
+          if(submit_to_sq(argv[i], s)) {
+              fprintf(stderr, "Error reading file\n");
+              return 1;
+          }
+          read_from_cq(s);
+      }
+      return 0;
+  }
+
+Explanation
+-----------
+Let's take a deeper dive into specific, important areas of the code and see how this example program works.
+
+The initial setup
+^^^^^^^^^^^^^^^^^
+From :c:func:`main`, we call :c:func:`app_setup_uring`, which does the initialization work required for us to use ``io_uring``. First, we call the :c:func:`io_uring_setup` system call with the queue depth we require and an instance of the structure ``io_uring_params`` all set to zero. When the call returns, the kernel would have filled up values in the members of this structure. This is how ``io_uring_params`` looks like:
+
+.. code-block:: c
+
+  struct io_uring_params {
+    __u32 sq_entries;
+    __u32 cq_entries;
+    __u32 flags;
+    __u32 sq_thread_cpu;
+    __u32 sq_thread_idle;
+    __u32 resv[5];
+    struct io_sqring_offsets sq_off;
+    struct io_cqring_offsets cq_off;
+  };
+
+The only thing you can specify before passing this structure as part of the :c:func:`io_uring_setup` system call is the flags structure member, but in this example, there is no flag we want to pass. Also, in this example, we process the files one after the other. We are not going to do any parallel I/O since this is a simple example designed mainly to get an understanding of ``io_uring``. To this end, we set the queue depth to just one.
+
+The return value from :c:func:`io_uring_setup`, a file descriptor and other fields from the io_uring_param structure will subsequently used in calls to :c:func:`mmap` to map into user space two ring buffers and an array of submission queue entries. Take a look. I’ve removed some surrounding code to focus on the :c:func:`mmap` calls.
+
+.. code-block:: c
+
+    /* Map in the submission queue ring buffer */
+    ptr = mmap(0, p.sq_off.array + p.sq_entries * sizeof(__u32),
+            PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
+            s->ring_fd, IORING_OFF_SQ_RING);
+    /* Map in the submission queue entries array */
+    s->sqes = mmap(0, p.sq_entries * sizeof(struct io_uring_sqe),
+            PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
+            s->ring_fd, IORING_OFF_SQES);
+    /* Map in the completion queue ring buffer */
+    ptr = mmap(0,
+            p.cq_off.cqes + p.cq_entries * sizeof(struct io_uring_cqe),
+            PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
+            s->ring_fd, IORING_OFF_CQ_RING);
+
+We save important details in our structures ``app_io_sq_ring`` and ``app_io_cq_ring`` for easy reference later. While we map the two ring buffers for submission and completion each, you might be wondering what the 3rd mapping is for. While the completion queue ring directly indexes the shared array of CQEs, the submission ring has an indirection array in between. The submission side ring buffer is an index into this array, which in turn contains the index into the SQEs. This is useful for certain applications that embed submission requests inside of internal data structures. This setup allows them to submit multiple submission entries in one go while allowing them to adopt io_uring more easily.
+
+Dealing with the shared ring buffers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+In regular programming, we’re used to dealing with a very clear interface between user-space and the kernel: the system call. However, system calls do have a cost and for high-performance interfaces like ``io_uring``, want to do away with them as much as they can. We saw earlier that rather than making multiple system calls as we normally do, using io_uring allows us to batch many I/O requests and make a single call to the :c:func:`io_uring_enter` system call. Or in polling mode, even that call isn’t required.
+
+When reading or updating the shared ring buffers from user space, there is some care that needs to be taken to ensure that when reading, you are seeing the latest data and after updating, you are “flushing” or “syncing” writes so that the kernel sees your updates. This is due to fact the the CPU can reorder reads and writes and so can the compiler. This is typically not a problem when this is happening on the same CPU. But in the case of io_uring, when there is a shared buffer involved across two different contexts: user space and kernel and these can run on different CPUs after a context switch. You need to ensure from user space that before you read, previous writes are visible. Or when you fill up details in an SQE and update the tail of the submission ring buffer, you want to ensure that the writes you made to the members of the SQE are ordered before the write that updates the ring buffer’s tail. If these writes aren’t ordered, the kernel might see the tail updated, but when it reads the SQE, it might not find all the data it needs at the time it reads it. In polling mode, where the kernel is looking for changes to the tail, this becomes a real problem. This is all because of how CPUs and compilers reorder reads and writes for optimization.
+
+Reading a completion queue entry
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+As always, we take up the completion side of things first since it is simpler than its submission counterpart. These explanations are even required because we need to discuss memory ordering and how we need to deal with it. Otherwise, we’re seeing how to deal with ring buffers. For completion events, the kernel adds CQEs to the ring buffer and updates the tail, while we read from the head in user space. As in any ring buffer, if the head and the tail are equal, it means the ring buffer is empty. Take a look at the code below:
+
+.. code-block:: c
+
+  unsigned head;
+  head = cqring->head;
+  read_barrier(); /* ensure previous writes are visible */
+  if (head != cqring->tail) {
+      /* There is data available in the ring buffer */
+      struct io_uring_cqe *cqe;
+      unsigned index;
+      index = head & (cqring->mask);
+      cqe = &cqring->cqes[index];
+      /* process completed cqe here */
+       ...
+      /* we've now consumed this entry */
+      head++;
+  }
+  cqring->head = head;
+  write_barrier();
+
+To get the index of the head, the application needs to mask head with the size mask of the ring buffer. Remember that any line in the code above could be running after a context switch. So, right before the comparison, we have a :c:func:`read_barrier` so that, if the kernel has indeed updated the tail, we can read it as part of our comparison in the if statement. Once we get the CQE and process it, we update the head letting the kernel know that we’ve consumed an entry from the ring buffer. The final :c:func:`write_barrier` ensures that writes we do become visible so that the kernel knows about it.
+
+Making a submission
+^^^^^^^^^^^^^^^^^^^
+Making a submission is the opposite of reading a completion. While in the completion the kernel added entries to the tail and we read an entry off the head of the ring buffer, when making a submission, we add to the tail and kernel reads entries off the head of the ring buffer.
+
+.. code-block:: c
+
+  struct io_uring_sqe *sqe;
+  unsigned tail, index;
+  tail = sqring->tail;
+  index = tail & (*sqring->ring_mask);
+  sqe = &sqring->sqes[index];
+  /* this function call fills in the SQE details for this IO request */
+  app_init_io(sqe);
+  /* fill the SQE index into the SQ ring array */
+  sqring->array[index] = index;
+  tail++;
+  write_barrier();
+  sqring->tail = tail;
+  write_barrier();
+
+In the code snippet above, the :c:func:`app_init_io` function in the application fills up details of the request for submission. Before the tail is updated, we have a :c:func:`write_barrier` to ensure that the previous writes are ordered before we update the tail. Then we update the tail and call :c:func:`write_barrier` once more to ensure that our update is seen. We’re lining up our ducks here.
+
+Source code
+-----------
+This code and other examples in this documentation are available in this `Github repository <https://github.com/shuveb/io_uring-by-example>`_.
