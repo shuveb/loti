@@ -37,6 +37,7 @@ Documentation
     tutorial/link_liburing
     tutorial/fixed_buffers
     tutorial/sq_poll
+    tutorial/register_eventfd
 
 .. toctree::
     :maxdepth: 1

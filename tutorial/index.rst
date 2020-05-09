@@ -13,3 +13,4 @@ Like as discussed in the previous chapters, while being aware of how the low-lev
     link_liburing
     fixed_buffers
     sq_poll
+    register_eventfd
