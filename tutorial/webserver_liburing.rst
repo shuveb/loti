@@ -3,9 +3,9 @@
 A web server with liburing
 ==========================
 
-We discussed in part 1 that because select(), poll() and epoll report operations on local / regular files as always being in a ready state, libraries like libuv (this one powers NodeJS) use a separate thread pool at deal with file I/O. One huge advantage with io_uring is that it presents a single, clean uniform and above all, working interface for many types of I/O.
+We discussed in :ref:`the introduction <async_intro>` that because :man:`select(2)`, :man:`poll(2)` and :man:`epoll(7)` report operations on local / regular files as always being in a ready state, libraries like libuv (this one powers NodeJS) use a separate thread pool to deal with file I/O. One huge advantage with ``io_uring`` is that it presents a single, clean uniform and above all, efficient interface for many types of I/O.
 
-In this example, we’ll look at an additional operation, accept() and how to do it using io_uring. Throw in operations for readv() and writev(), you have the capability to write a simple web server! This web server is based on code I wrote for ZeroHTTPd, a program that features in an article series I wrote to explore various Linux process models and how they perform compared to each other. I’ve rewritten ZeroHTTPd to use the io_uring interface exclusively.
+In this example, we’ll look at an additional operation, ``accept()`` and how to do it using ``io_uring``. Throw in operations for ``readv()`` and ``writev()``, you have the capability to write a simple web server! This web server is based on code I wrote for ZeroHTTPd, a program that features in an `article series <https://unixism.net/2019/04/linux-applications-performance-introduction/>`_ I wrote to explore various Linux process models and how they perform compared to each other. I’ve rewritten ZeroHTTPd to use the ``io_uring`` interface exclusively.
 
 Here is the index page served via ZeroHTTPd:
 

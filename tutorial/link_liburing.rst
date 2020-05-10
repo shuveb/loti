@@ -2,6 +2,7 @@
 
 Linking requests
 ================
+In ``io_uring``, completions do not arrive in the order that submissions were issues in. This was discussed in the chapter :ref:`The Low-level io_uring Interface <low_level>`. What if you want to force certain operations to happen in order? This is possible by linking requests together. The example here shows you how it's done.
 
 
 .. code-block:: c
@@ -100,7 +101,7 @@ When linked operations are involved, the failure of a one operation will cause a
     Result of the operation: 0
     Buffer contents: Hello, io_uring!
 
-If we switch the open statement from 
+If we switch them ``open()`` statement from 
 
 .. code-block:: c
 
@@ -112,7 +113,7 @@ to this, in which we open the file in a write-only mode:
 
     int fd = open(FILE_NAME, O_WRONLY|O_TRUNC|O_CREAT, 0644);
 
-our write operation should go through, but our read operation will fail since the file is now open in write-only mode. Since the subsequent close operation is linked to the read operation, it should fail. The output of this flawed program will now be:
+our write operation should go through, but our read operation will fail since the file is now open in write-only mode. Since the subsequent close operation is linked to the read operation, it should fail, too. The output of this flawed program will now be:
 
 ::
 

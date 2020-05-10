@@ -3,8 +3,7 @@
 
 Fixed buffers
 =============
-
-   The idea with using fixed buffers is this: you provide a set of buffers you describe with an array of ``iovec`` structures and register them with the kernel using :c:func:`io_uring_register_buffers`. This causes the kernel to map these buffers in, avoiding future copied to and from user space. You can then use the "fixed buffer" functions like :c:func:`io_uring_prep_write_fixed` and :c:func:`io_uring_prep_read_fixed` specifying the index of the buffer you want to use.
+The idea with using fixed buffers is this: you provide a set of buffers you describe with an array of ``iovec`` structures and register them with the kernel using :c:func:`io_uring_register_buffers`. This causes the kernel to map these buffers in, avoiding future copied to and from user space. You can then use the "fixed buffer" functions like :c:func:`io_uring_prep_write_fixed` and :c:func:`io_uring_prep_read_fixed` specifying the index of the buffer you want to use.
 
 .. code-block:: c
 
