@@ -68,7 +68,7 @@ TODO: Are the below two structs really required? Remove them if they are only us
 
     * `entries`: the number of entries you want to request for the submission queue. Each request holds details about one I/O operation.
     * `ring`: pointer to :c:struct:`io_uring` structure which will be filled up by the kernel.
-    * `flags`: flags you want to pass. See :ref:`setup_time_flags` for details.
+    * `flags`: flags you want to pass. See :ref:`io_uring_setup` for details.
 
     **Return value**: returns 0 on success and ``-errono`` on failure. You can use :man:`strerror(3)` to get a human readable version of the reason for failure.
 
@@ -81,7 +81,7 @@ TODO: Are the below two structs really required? Remove them if they are only us
 
     Functionally equivalent to :c:func:`io_uring_queue_init`, but additionally takes a pointer to :c:struct:`io_uring_params` structure, allowing you to specify your own :c:struct:`io_uring_params` structure.
 
-    In the :c:struct:`io_uring_params` structure, you can only specify ``flags`` which can be used to set :ref:`various flags <setup_time_flags>` and ``sq_thread_cpu`` and ``sq_thread_idle`` fields, which are used to set the CPU affinity and submit queue idle time. Other fields of the structure are filled up by the kernel on return. When you use :c:func:`io_uring_queue_init`, you don't get to specify these values. This function's existence solves this problem for you.
+    In the :c:struct:`io_uring_params` structure, you can only specify ``flags`` which can be used to set :ref:`various flags <io_uring_setup>` and ``sq_thread_cpu`` and ``sq_thread_idle`` fields, which are used to set the CPU affinity and submit queue idle time. Other fields of the structure are filled up by the kernel on return. When you use :c:func:`io_uring_queue_init`, you don't get to specify these values. This function's existence solves this problem for you.
 
     TODO: example program would help here.
 

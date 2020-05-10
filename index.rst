@@ -59,7 +59,6 @@ Documentation
     ref-liburing/submission
     ref-liburing/completion
     ref-liburing/advanced_usage
-    ref-liburing/low_level
 
 .. toctree::
     :maxdepth: 1
