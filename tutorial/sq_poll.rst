@@ -3,15 +3,19 @@
 Submission Queue Polling
 ========================
 
-Reducing the number of system calls is a major aim for ``io_uring``. To this end, ``io_uring`` lets you submit I/O requests without you having to make a single system call. This is done via a special submission queue polling feature that ``io_uring`` supports. In this mode, ``io_uring`` starts a special kernel thread that polls the submission queues for entries. That way, you just have to submit entries into the shared queue and the kernel thread should see it and pick up the submission queue entry. This is a benefit of having a queue that is shared between user space and the kernel.
+Reducing the number of system calls is a major aim for ``io_uring``. To this end, ``io_uring`` lets you submit I/O requests without you having to make a single system call. This is done via a special submission queue polling feature that ``io_uring`` supports. In this mode, right after your program sets up polling mode, ``io_uring`` starts a special kernel thread that polls the shared submission queue for entries your program might add. That way, you just have to submit entries into the shared queue and the kernel thread should see it and pick up the submission queue entry without your program having to make the :c:func:`io_uring_enter` system call, which is usually taken care of by ``liburing``. This is a benefit of having a queue that is shared between user space and the kernel.
 
-How to use this mode? The idea is simple. You tell ``io_uring`` that you want use this mode by setting the ``IORING_SETUP_SQPOLL`` flag in the ``io_uring_params`` structure's ``flags`` member. If the kernel thread that starts along with your process does not see any submission for a period of time, it will quit and you'll need to use the :c:func:`io_uring_enter` system call once more to wake it up. This period of time is configurable via :c:struct`io_uring_params` structure's ``sq_thread_idle`` member. If you keep the submissions coming however, the kernel poller thread should never sleep.
+How to use this mode? The idea is simple. You tell ``io_uring`` that you want use this mode by setting the ``IORING_SETUP_SQPOLL`` flag in the ``io_uring_params`` structure's ``flags`` member. If the kernel thread that starts along with your process does not see any submission for a period of time, it will quit and your program will need to call the :c:func:`io_uring_enter` system call once more to wake it up. This period of time is configurable via :c:struct`io_uring_params` structure's ``sq_thread_idle`` member. If you keep the submissions coming however, the kernel poller thread should never sleep.
+
+.. note::
+
+    When using ``liburing``, you never directly call the :c:`func:io_uring_enter` system call. That is usually taken care of by ``liburing``'s :c:func:`io_uring_submit` function. It automatically determines if you are using polling mode or not and deals with when your program needs to call :c:func:`io_uring_enter` without you having to bother about it.
 
 .. note::
 
     The kernel's poller thread can take up a lot of CPU. You need to be careful about using this feature. Setting a very large ``sq_thread_idle`` value will cause the kernel thread to continue to consume CPU while there are no submissions happening from your program. It is a good idea to use this feature if you truly expect to handle large amounts of I/O. And even when you do so, it might be a good idea to set the poller thread's idle value to a few seconds at most.
 
-If you need to use this feature however, you will also need to use it with :c:func:`io_uring_register_files`. Using this, you tell the kernel about an array of file descriptors beforehand. This is just a regular array of file descriptors you open before initiating I/O. During submission time, rather than passing a file descriptor as you normally would to calls like :c:func:`io_uring_prep_read` or :c:func:`io_uring_prep_write`, you need to set the ``IOSQE_FIXED_FILE`` flag in the ``flags`` field of the SQE and pass the index of the file descriptor in the array of file descriptors you setup before. 
+If you need to use this feature however, you will also need to use it in conjunction with :c:func:`io_uring_register_files`. Using this, you tell the kernel about an array of file descriptors beforehand. This is just a regular array of file descriptors you open before initiating I/O. During submission, rather than passing a file descriptor as you normally would to calls like :c:func:`io_uring_prep_read` or :c:func:`io_uring_prep_write`, you need to set the ``IOSQE_FIXED_FILE`` flag in the ``flags`` field of the SQE and pass the index of the file descriptor from the array of file descriptors you setup before. 
 
 .. code-block:: c
 
@@ -163,16 +167,15 @@ If you need to use this feature however, you will also need to use it with :c:fu
 
 How it works
 ------------
+This example program is much like the :ref:`fixed_buffers` example we saw before. Whereas we used specialized functions like :c:func:`io_uring_prep_read_fixed` and :c:func:`io_uring_prep_write_fixed` to deal with fixed buffers, we use regular functions like :c:func:`io_uring_prep_read`, :c:func:`io_uring_prep_readv`, :c:func:`io_uring_prep_write` or :c:func:`io_uring_prep_writev`. In the SQE that is used the describe the submission however, you set the ``IOSQE_FIXED_FILE`` flag while using the index of the file descriptors in the file descriptor array rather than the file descriptor itself in calls like :c:func:`io_uring_prep_readv` and :c:func:`io_uring_prep_writev`.
 
-This example program is much like the :ref:`fixed_buffers` example we saw before. Whereas we used specialized functions like :c:func:`io_uring_prep_read_fixed` and :c:func:`io_uring_prep_write_fixed` to deal with fixed buffers, we use regular functions like :c:func:`io_uring_prep_read`, :c:func:`io_uring_prep_readv`, :c:func:`io_uring_prep_write` or :c:func:`io_uring_prep_writev`. In the SQE that is used the describe the submission however, you set the ``IOSQE_FIXED_FILE`` flag.
+When the program starts, before we setup the ``io_uring`` instance, we print the running status of the kernel thread that does the submission queue polling. The name of this thread is ``io_uring-sq``. The function ``print_sq_poll_kernel_thread_status()`` prints this status. Of course, if there is any other process using submission queue polling, you will see that this kernel thread is indeed running. The parent for all kernel threads is the ``kthreadd`` kernel thread which is started right after ``init``, which famously has a process ID of 1. As a result, ``kthreadd`` has a PID of 2 and we can exploit this fact to filter only kernel threads as a simple optimization.
 
-When the program starts, before we setup the ``io_uring`` instance, we print the running status of the kernel thread that does the submission queue polling. The name of this thread is ``io_uring-sq``. The function ``print_sq_poll_kernel_thread_status()`` prints this status. Of course, if there is any other process using submission queue polling, you will see that this kernel thread is indeed. running. The parent for all kernel threads is the ``kthreadd`` kernel thread which is started right after ``init``, which famously has a process ID of 1. As a result, ``kthreadd`` has a PID of 2 and we can exploit this fact to filter only kernel threads.
-
-To initialize ``io_uring``, we use the :c:func:`io_uring_queue_init_params` rather than the usual :c:func:`io_uring_queue_init` since this takes a pointer to a :c:struct:`io_uring_params` structure as an argument. It is in that argument that we specify ``IORING_SETUP_SQPOLL`` as part of the ``flags`` field and set ``sq_thread_idle`` to 2000, which is the idle time for the submission queue poller kernel thread. If there are no submissions for these many milliseconds, the thread will exit and an :c:func:`io_uring_enter` system call will need to be made to get it going again.
+To initialize ``io_uring``, we use the :c:func:`io_uring_queue_init_params` rather than the usual :c:func:`io_uring_queue_init` since this takes a pointer to a :c:struct:`io_uring_params` structure as an argument. It is in that argument that we specify ``IORING_SETUP_SQPOLL`` as part of the ``flags`` field and set ``sq_thread_idle`` to 2000, which is the idle time for the submission queue poller kernel thread. If there are no submissions for these many milliseconds, the thread will exit and an :c:func:`io_uring_enter` system call will need to be made internally by ``liburing`` to get the kernel thread going again.
 
 Since submission queue polling only works in combination with fixed files, we first register the lone file descriptor we want to deal with. If you are dealing with more files, this is where you open and register them with the :c:func:`io_uring_register_files` function. For each submission, you need to set the ``IOSQE_FIXED_FILE`` flag with the :c:func:`io_sqe_set_flags` helper function and provide the index of the open file from the array of registered files rather than the actual file descriptor itself to functions like :c:func:`io_uring_prep_read` or :c:func:`io_uring_prep_write`.
 
-In this example, we have 4 buffers. The first 2 are used by 2 write operations to write a line each into a file. Later, we use the 3rd and 4th buffers with 2 more read operations to read the 2 written lines and print them. After the write operations, we pring the status of the ``io_uring-sq`` kernel thread, which we should now find running.
+In this example, we have 4 buffers. The first 2 are used by 2 write operations to write a line each into a file. Later, we use the 3rd and 4th buffers with 2 more read operations to read the 2 written lines and print them. After the write operations, we print the status of the ``io_uring-sq`` kernel thread, which we should now find running.
 
 ::
 
@@ -187,14 +190,13 @@ In this example, we have 4 buffers. The first 2 are used by 2 write operations t
     Result of the operation: 35
     Contents read from file:
     What is this life if, full of care,
-    We have no time to stand and stare.%                                                                         ➜   
+    We have no time to stand and stare.%                                                                    ➜   
 
 Verifying polling by the kernel
 -------------------------------
+You do call :c:func:`io_uring_submit`, though. We saw in previous examples that this caused an :c:func:`io_uring_enter` system call to be issued. Not in this case where you've set up the ``IORING_SETUP_SQPOLL`` flag, though. ``liburing`` completely hides this from you while keeping a constant interface to your programs. But, can we verify this? Yes, we can via the ``bpftrace`` program that uses eBPF to let us peek into the system. Here, we will use tracepoints in the kernel that ``io_uring`` has setup to prove that when we set ``IORING_SETUP_SQPOLL`` and submit I/O requests, in spite of us calling the :c:func:`io_uring_submit` function, our program never makes the :c:func:`io_uring_enter` system call. Like discussed previously, for high throughput programs, the idea is to avoid system calls as much as we can.
 
-You do call :c:func:`io_uring_submit`, though. We saw in previous examples that this caused an :c:func:`io_uring_enter` system call to be issued. Not in this case where you've set up the ``IORING_SETUP_SQPOLL`` flag, though. ``liburing`` completely hides this from you while keeping a constant interface to your programs. But, can we verify this? Yes, we can via the ``bpftrace`` program that uses eBPF to let us peek into the system. Here, we will use tracepoints in the kernel that ``io_uring`` has setup to prove that when we set ``IORING_SETUP_SQPOLL`` and submit I/O requests, in spite of us calling the :c:func:`io_uring_submit` function, our program never make the :c:func:`io_uring_enter` system call. Like discussed previously, for high throughput programs, the idea is to avoid system calls as much as we can.
-
-In the below program, we attach to ``io_uring``'s ``io_uring_submit_sqe`` tracepoint. This tracepoint is triggered whenever an SQE is submitted to the kernel. Each time this tracepoint is triggered, we use ``bpftrace`` to print the name of the command and its PID. First, let's run the ``bpftrace`` command on one terminal while running the :ref:`fixed_buffers` example in another. Here is a sample output from my machine. You can see that ``fixed_buffers`` is the one submitting the SQE.
+In the program below, we attach to ``io_uring``'s ``io_uring_submit_sqe`` tracepoint. This tracepoint is triggered whenever an SQE is submitted to the kernel. Each time this tracepoint is triggered, we use ``bpftrace`` to print the name of the command and its PID. First, let's run the ``bpftrace`` command on one terminal while running the :ref:`fixed_buffers` example in another. Here is a sample output from my machine. You can see that ``fixed_buffers`` is the one submitting the SQE.
 
 ::
 
@@ -205,7 +207,7 @@ In the below program, we attach to ``io_uring``'s ``io_uring_submit_sqe`` tracep
     fixed_buffers(30336)
     fixed_buffers(30336)
 
-Let's repeat the previous exercise, but now with the current example. You can see that the SQE submission happens via the ``io_uring_sq`` kernel thread.
+Let's repeat the previous exercise, but now by running the current example. You can see that the SQE submission happens via the ``io_uring_sq`` kernel thread. We thus avoid system calls.
 
 ::
 

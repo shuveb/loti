@@ -3,7 +3,7 @@
 
 Fixed buffers
 =============
-The idea with using fixed buffers is this: you provide a set of buffers you describe with an array of ``iovec`` structures and register them with the kernel using :c:func:`io_uring_register_buffers`. This causes the kernel to map these buffers in, avoiding future copied to and from user space. You can then use the "fixed buffer" functions like :c:func:`io_uring_prep_write_fixed` and :c:func:`io_uring_prep_read_fixed` specifying the index of the buffer you want to use.
+The idea with using fixed buffers is this: you provide a set of buffers you describe with an array of ``iovec`` structures and register them with the kernel using :c:func:`io_uring_register_buffers`. This causes the kernel to map these buffers in, avoiding future copies to and from user space. You can then use the "fixed buffer" functions like :c:func:`io_uring_prep_write_fixed` and :c:func:`io_uring_prep_read_fixed` specifying the index of the buffer you want to use.
 
 .. code-block:: c
 
@@ -127,7 +127,6 @@ The idea with using fixed buffers is this: you provide a set of buffers you desc
 
 How it works
 ------------
-
 We allocate 4 buffers via :man:`malloc(3)` and then register them with the kernel with the :c:func:`io_uring_register_buffers` function. The ``iovec`` structure describes each array by holding a base address and the size of the allocated buffer. We use an array of ``iovec`` structures 4 elements long to hold details about the 4 arrays we need.
 
 This program is just a simple demonstration of how to use fixed buffers and as such does not to anything more useful beyond that. But it does serve to remind you about `the poem Leisure <https://en.wikipedia.org/wiki/Leisure_(poem)>`_ by W.H Davies, though. Two strings are written using two fixed write operations (:c:func:`io_uring_prep_write_fixed`) to a file using buffers in indices 0 and 1. Later, we read the file using two fixed read operations (:c:func:`io_uring_prep_read_fixed`) this time using buffer indices 2 and 3. We then print the results of these reads.
