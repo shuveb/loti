@@ -6,7 +6,7 @@
 Welcome to Lord of the io_uring
 ===============================
 
-``io_uring`` is a powerful new way to do asynchronous I/O programming under Linux. Without the limitations of previous generations of I/O subsystems, ``io_uring`` treats regular files and socket equally. For more detals on ``io_uring``, please see the chapter :ref:`what_is_io_uring`.
+``io_uring`` is a powerful new way to do asynchronous I/O programming under Linux. Doing away with various limitations of previous generation  I/O subsystems, ``io_uring`` holds immense promise. For more details on what ``io_uring`` brings to the table, please see the chapter :ref:`what_is_io_uring`.
 
 
 About
@@ -15,11 +15,11 @@ This ``io_uring`` guide was created by `Shuveb Hussain <https://twitter.com/shuv
 
 Contributing
 ------------
-The source code repository for this guide is `here on Github <https://github.com/shuveb/loti>`_. Please send me a pull request. If you find any bugs in either the documentation or the included source code examples, please raise an issue on GitHub. The repository for the example programs is maintained separately. Please see below.
+The source code repository for this guide is `here on Github <https://github.com/shuveb/loti>`_. Please send me pull requests should you want to contribute. If you find any bugs in either the documentation or the included source code examples, please raise an issue on GitHub. The repository for the example programs is maintained separately. Please see details below.
 
 Source code for examples
 ------------------------
-Source code for all the example programs in this guide are available `on Github <https://github.com/shuveb/loti-examples>`_. If you find bugs in the examples, please raise issues on Github. I want to keep these examples simple and to the point. I many not merge pull requests that add features for that reason. Pull requests that fix bugs are welcome.
+Source code for all example programs in this guide are available `on Github <https://github.com/shuveb/loti-examples>`_. If you find bugs in the examples, please raise issues on Github. I want to keep these examples simple and to the point. I many not merge pull requests that add features for that reason. Pull requests that fix bugs are welcome.
 
 Documentation
 -------------
@@ -31,8 +31,6 @@ Documentation
     async_intro
     what_is_io_uring
     low_level
-    liburing_examples
-    reference
 
 .. toctree::
     :maxdepth: 1
