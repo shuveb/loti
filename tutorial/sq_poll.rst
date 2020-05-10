@@ -9,7 +9,7 @@ How to use this mode? The idea is simple. You tell ``io_uring`` that you want us
 
 .. note::
 
-    When using ``liburing``, you never directly call the :c:`func:io_uring_enter` system call. That is usually taken care of by ``liburing``'s :c:func:`io_uring_submit` function. It automatically determines if you are using polling mode or not and deals with when your program needs to call :c:func:`io_uring_enter` without you having to bother about it.
+    When using ``liburing``, you never directly call the :c:func:`io_uring_enter` system call. That is usually taken care of by ``liburing``'s :c:func:`io_uring_submit` function. It automatically determines if you are using polling mode or not and deals with when your program needs to call :c:func:`io_uring_enter` without you having to bother about it.
 
 .. note::
 

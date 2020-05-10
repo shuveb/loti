@@ -2,10 +2,9 @@
 
 Register an eventfd
 ===================
-
 Going into the details of the :man:`eventfd(2)` system call is out-of-scope. You might want to check the :man:`eventfd(2)` man page for the description on that system call. :man:`eventfd(2)` is a Linux-specific synchronization mechanism.
 
-``io_uring`` is capable of posting events on an eventfd instance whenever completions occur. This capability enables processes that are multiplexing I/O using :man:`poll(2)` or :man:`epoll(7)` to add a ``io_uring`` registered eventfd instance file descriptor to the interest list so that :man:`poll(2)` or :man:`epoll(7)` can notify them when a completion is available. This allows them to be busy processing their existing event loops rather than being blocked in a call to :c:func:`io_uring_wait_cqe`.
+``io_uring`` is capable of posting events on an eventfd instance whenever completions occur. This capability enables processes that are multiplexing I/O using :man:`poll(2)` or :man:`epoll(7)` to add a ``io_uring`` registered eventfd instance file descriptor to the interest list so that :man:`poll(2)` or :man:`epoll(7)` can notify them when a completion via ``io_uring`` occurred. This allows such programs to be busy processing their existing event loops rather than being blocked in a call to :c:func:`io_uring_wait_cqe`.
 
 .. code-block:: c
 
@@ -114,8 +113,12 @@ Going into the details of the :man:`eventfd(2)` system call is out-of-scope. You
 How it works
 ------------
 
-In the main thread, we create an :man:`eventfd(2)` instance. We then create a thread, passing the ``eventfd`` file descriptor. In the thread, we print a message and immediately read from the ``eventfd`` file descriptor. This causes the thread to block since there should be no events posted yet on to the ``eventfd`` instance.
+In the main thread, we create an :man:`eventfd(2)` instance. We then create a thread, passing it the ``eventfd`` file descriptor. In the thread, we print a message and immediately read from the ``eventfd`` file descriptor. This causes the thread to block since there should be no events posted yet on to the ``eventfd`` instance.
 
-While the child thread is blocking on the read on the ``eventfd`` file descriptor, we sleep for 2 seconds in the parent to percieve this sequence clearly. Next, in ``setup_io_uring()``, we create an ``io_uring`` instance and register our ``eventfd`` file descriptor with it. This will cause ``io_uring`` to post an event on this ``eventfd`` for every completion event.
+While the child thread is blocking on the read on the ``eventfd`` file descriptor, we sleep for 2 seconds in the parent to perceive this sequence clearly. Next, in ``setup_io_uring()``, we create an ``io_uring`` instance and register our ``eventfd`` file descriptor with it. This will cause ``io_uring`` to post an event on this ``eventfd`` for every completion event.
 
 We then call ``read_file_with_io_uring()`` from main. In this, we submit a request to read a file. This will cause ``io_uring`` to post an event on the registered ``eventfd`` instance. This should now cause the :man:`read(2)` call in which ``listener_thread()`` is blocked on to unblock and continue execution. In this thread, we fetch the completion and print out the data.
+
+.. note::
+
+    Please note that ``eventfd_read()`` is a library function provided by glibc. It essentially calls read on the eventfd.
