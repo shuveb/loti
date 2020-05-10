@@ -41,6 +41,7 @@ Documentation
     tutorial/cat_liburing
     tutorial/cp_liburing
     tutorial/webserver_liburing
+    tutorial/probe_liburing
     tutorial/link_liburing
     tutorial/fixed_buffers
     tutorial/sq_poll

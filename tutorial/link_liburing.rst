@@ -129,3 +129,6 @@ The first error ("Bad file descriptor") you're seeing is from the failing read o
    
    Please note that you need kernel 5.6 or better for this example to work since the read, write and close operations aren't supported in earlier versions.
 
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

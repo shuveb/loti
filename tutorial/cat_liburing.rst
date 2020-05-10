@@ -217,4 +217,6 @@ Of course, this is so much more simpler to use compared to using the raw interfa
     * :c:func:`io_uring_cqe_get_data`
     * :c:func:`io_uring_queue_exit`
 
-
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

@@ -628,3 +628,7 @@ This submission causes the kernel to write out the response headers and the cont
                   break;
 
 We free up how many ever ``iovec`` pointed buffers we created, free up the request structure instance and also close the client socket, thus completing serving of the HTTP request.
+
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

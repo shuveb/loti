@@ -122,3 +122,7 @@ We then call ``read_file_with_io_uring()`` from main. In this, we submit a reque
 .. note::
 
     Please note that ``eventfd_read()`` is a library function provided by glibc. It essentially calls read on the eventfd.
+
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

@@ -66,7 +66,7 @@ You can also set up polling as to avoid calling the :c:func:`io_uring_submit` sy
   **Parameters**
 
   * `sqe`: the SQE instance for which you want to set the user data.
-  * `flags`: the flags you want to set. This is a bitmap field. Please see the :ref:`SQE Flags <sqe_flags>` section for various flags and what they mean.
+  * `flags`: the flags you want to set. This is a bitmap field. Please see the :ref:`io_uring_enter` reference page for various SQE flags and what they mean.
 
 ----
 

@@ -217,3 +217,6 @@ Let's repeat the previous exercise, but now by running the current example. You 
     io_uring-sq(30429)
     io_uring-sq(30429)
 
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

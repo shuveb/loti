@@ -145,4 +145,6 @@ You can see how the output of this program looks like below:
     What is this life if, full of care,
     We have no time to stand and stare.
 
-
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

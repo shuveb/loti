@@ -10,7 +10,12 @@ As discussed in previous chapters, while being aware of how the low-level ``io_u
     cat_liburing
     cp_liburing
     webserver_liburing
+    probe_liburing
     link_liburing
     fixed_buffers
     sq_poll
     register_eventfd
+
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.

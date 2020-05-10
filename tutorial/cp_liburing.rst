@@ -262,3 +262,7 @@ This copy program, like most others, copies the file pointed to by the first arg
 Once the queue is full, we come to the second nested ``while`` loop. This loop reaps up completion queue entries and submits requests to write the destination file, now that the data is read. There are several variables that track state and it can get a little confusing. But how difficult can an asynchronous file copying program be? :)
 
 **Based on** `unixism.net/2020/04/io-uring-by-example-part-2-queuing-multiple-requests/ <https://unixism.net/2020/04/io-uring-by-example-part-2-queuing-multiple-requests/>`_
+
+Source code
+-----------
+Source code for this and other examples is `available on Github <https://github.com/shuveb/loti-examples>`_.
