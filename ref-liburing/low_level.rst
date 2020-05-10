@@ -93,10 +93,3 @@ SQE Flags
               execute it in an async manner. To support more efficient overlapped operation of requests that the
               application knows/assumes will always (or most of the time) block, the application can ask for  an
               sqe to be issued async from the start. Available since 5.6.
-
-
-
-----
-
-.. c:function:: int io_uring_setup(unsigned entries, struct io_uring_params *p)
-

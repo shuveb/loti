@@ -3,7 +3,7 @@
 ``cp`` with liburing
 ====================
 
-In the previous section, we saw how to build the equivalent of the Unix ``cat`` utility using the high-level interface to ``io_uring`` provided by liburing. We did not however queue more than one request at the same time in either of these examples. One of the life goals of ``io_uring`` is to be able to reduce the number of system calls required by letting users queue several operations at a time so that the kernel can pick those up in one swoop and process them without the program having to go through one or more system calls for each I/O request.
+In the :ref:`previous section <cat_liburing>`, we saw how to build the equivalent of the Unix ``cat`` utility using the high-level interface to ``io_uring`` provided by liburing. We did not however queue more than one request at the same time in either of these examples. One of the life goals of ``io_uring`` is to be able to reduce the number of system calls required by letting users queue several operations at once so that the kernel can pick those up in one swoop and process them without the program having to go through one or more system calls for each I/O request.
 
 To that end, in this part, we build a copy program that copies files. It tries to be as efficient as possible by queuing as many requests as the queue depth will allow. Let’s see some code. To give credit where it is due, this is heavily based on `a program from the fio package <https://github.com/axboe/fio/blob/master/t/io_uring.c>`_.
 
@@ -257,7 +257,7 @@ To that end, in this part, we build a copy program that copies files. It tries t
 
 Program structure
 -----------------
-This copy program, like most others, copies the file pointed to by the first argument into the file pointed to in the second argument. The core of the program is the :c:func:`copy_file` function. Here, we set up an outer ``while`` loop, which turn contains 2 other ``while`` loops at the same level nested within it. While the outer ``while`` loop is there to ensure that all bytes from the source file are copied, the first nested ``while`` loop is tasked with creating as many :c:func:`readv` requests as possible. In fact, it enqueues as many as the queue depth will allow.
+This copy program, like most others, copies the file pointed to by the first argument into the file pointed to in the second argument. The core of the program is the :c:func:`copy_file` function. Here, we set up an outer ``while`` loop, which turn contains 2 other ``while`` loops at the same level nested within it. While the outer ``while`` loop is there to ensure that all bytes from the source file are copied, the first nested ``while`` loop is tasked with creating as many :man:`readv(2)` type requests as possible. In fact, it enqueues as many as the queue depth will allow.
 
 Once the queue is full, we come to the second nested ``while`` loop. This loop reaps up completion queue entries and submits requests to write the destination file, now that the data is read. There are several variables that track state and it can get a little confusing. But how difficult can an asynchronous file copying program be? :)
 

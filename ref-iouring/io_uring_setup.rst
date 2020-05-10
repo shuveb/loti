@@ -12,7 +12,7 @@ SYNOPSIS
 
    #include <linux/io_uring.h>
 
-   int io_uring_setup(u32 entries, struct io_uring_params *p);
+.. c:function:: int io_uring_setup(u32 entries, struct io_uring_params *p)
 
 DESCRIPTION
 -----------

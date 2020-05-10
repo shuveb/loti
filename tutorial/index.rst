@@ -1,6 +1,6 @@
 liburing Examples
 =================
-Like as discussed in the previous chapters, while being aware of how the low-level ``io_uring`` interface works is most certainly helpful, you might want to use ``liburing`` in more serious programs. ``liburing`` provides a more high-level interface to ``io_uring`` making it far more productive, while also removing a lot of boilerplate code, making your programs a lot shorter and to-the-point.
+As discussed in previous chapters, while being aware of how the low-level ``io_uring`` interface works is most certainly helpful, you might want to use ``liburing`` in more serious programs. ``liburing`` provides a more high-level interface to ``io_uring`` making it far more productive for you, while also removing a lot of boilerplate code, making your programs a lot shorter and to-the-point.
 
 
 .. toctree::

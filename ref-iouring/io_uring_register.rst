@@ -12,8 +12,7 @@ SYNOPSIS
 
    #include <linux/io_uring.h>
 
-   int io_uring_register(unsigned int fd, unsigned int opcode,
-    void *arg, unsigned int nr_args);
+.. c:function:: int io_uring_register(unsigned int fd, unsigned int opcode, void *arg, unsigned int nr_args)
 
 DESCRIPTION
 -----------

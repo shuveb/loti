@@ -2,7 +2,7 @@
 
 ``cat`` with liburing
 =====================
-We saw that building something as simple as a program that reads a file may not be as straightforward with io_uring. It turns out it is more code than a program that reads files with synchronous I/O. But if you analyze the code for cat_uring, you’ll realize that bulk of the code there is boilerplate code that can be easily hidden away in a separate file and it shouldn’t bother with application logic. In any case, we’re learning low-level io_uring details on purpose for better understanding of how it works. With that out of the way, let’s now look at how a functionally similar program to ``cat_uring`` can be implemented using ``liburing``. We’ll call this cat_liburing.
+We saw that building something as simple as a program that reads a file may not be as straightforward with io_uring. It turns out it is more code than a program that reads files with synchronous I/O. But if you analyze the code for the :ref:`cat utility that used the low-level io_uring interface <low_level>`, you’ll realize that bulk of the code there is boilerplate code that can be easily hidden away in a separate file and it shouldn’t bother with application logic. In any case, we’re learning low-level ``io_uring`` details on purpose for better understanding of how it works. With that out of the way, let’s now look at how a functionally similar program can be implemented using ``liburing``.
 
 .. code-block:: c
   :name: eg-cat-uring
@@ -205,5 +205,16 @@ We wait for a completion event and get the user data we set on the submission si
     struct file_info *fi = io_uring_cqe_get_data(cqe);
 
 Of course, this is so much more simpler to use compared to using the raw interface.
+
+.. seealso::
+
+    * :c:func:`io_uring_queue_init`
+    * :c:func:`io_uring_get_sqe`
+    * :c:func:`io_uring_prep_readv`
+    * :c:func:`io_uring_sqe_set_data`
+    * :c:func:`io_uring_submit`
+    * :c:func:`io_uring_wait_cqe`
+    * :c:func:`io_uring_cqe_get_data`
+    * :c:func:`io_uring_queue_exit`
 
 

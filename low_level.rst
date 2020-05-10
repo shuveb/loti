@@ -2,23 +2,23 @@
 
 The Low-level io_uring Interface
 ================================
-Like suggested in the previous session, you are unlikely to use the low-level ``io_uring`` API in serious programs. But it is always a good idea to know what kind of an interface ``io_uring`` really presents. For this, you'll have to play around the interface ``io_uring`` directly presents to programs via the shared ring buffers and the ``io_uring`` system calls. A good example and a simple one at that can present this interface well. To this end, here, we present an example that emulates the Unix ``cat`` utility. To keep things simple, we shall create a program that presents ``io_uring`` one operation at a time, waits for it to finish and presents the next operation and so on. While a real program might as well use synchronous/blocking calls to get work done this way, the main aim of this program is to familiarize you with the ``io_uring`` interface without other program logic potentially getting in the way.
+Like suggested in the previous session, you are unlikely to use the low-level ``io_uring`` API in serious programs. But it is always a good idea to know what kind of an interface ``io_uring`` really presents. For this, you'll have to play around the interface ``io_uring`` directly presents to programs via the shared ring buffers and related ``io_uring`` system calls. A good example and a simple one at that can present this interface well. To this end, here, we present an example that emulates the Unix ``cat`` utility. To keep things simple, we shall create a program that presents ``io_uring`` one operation at a time, waits for it to finish and presents the next operation and so on. While a real program might as well use synchronous/blocking calls to get work done this way, the main aim of this program is to familiarize you with the ``io_uring`` interface without other program logic potentially getting in the way.
 
-Familiarity with the :c:func:`readv` system call
+Familiarity with the :man:`readv(2)` system call
 ------------------------------------------------
-To get a good understanding of this example, you will need to be familiar with the `readv <http://man7.org/linux/man-pages/man2/readv.2.html>`_ system call. If you aren't familiar with it, I suggest you read `a more gentler <https://unixism.net/2020/04/io-uring-by-example-part-1-introduction/>`_ introduction and then return back here to continue.
+To get a good understanding of this example, you will need to be familiar with the :man:`readv(2)` system call. If you aren't familiar with it, I suggest you read `a more gentler <https://unixism.net/2020/04/io-uring-by-example-part-1-introduction/>`_ introduction and then return back here to continue.
 
 Introduction to the low-level interface
 ---------------------------------------
-``io_uring``‘s interface is simple. There is a submission queue and there is a completion queue. In the submission queue, you submit information on various operations you want to get done. For example, for our current program, we want to read files with :c:func:`readv`, so we place a submission queue request describing it as part of a submission queue entry (SQE). Since it is a queue, you can place many requests. As many as the queue depth (which you can define) will allow. These operations can be a mix of reads, writes, etc. Then, we call the :c:func:`io_uring_enter` system call to tell the kernel that we’ve added requests to the submission queue. The kernel then does its jujitsu and once it has done processing those requests, it places results in the completion queue as part of a CQE or a completion queue entry one for each corresponding SQE. These CQEs can be accessed from user space.
+``io_uring``‘s interface is simple. There is a submission queue and there is a completion queue. In the submission queue, you submit information on various operations you want to get done. For example, in our current program, we want to read files with :man:`readv(2)`, so we place a submission queue request describing it as part of a submission queue entry (SQE). Also, you can place more than one request. As many requests as the queue depth (which you can define) will allow. These operations can be a mix of reads, writes, etc. Then, we call the :c:func:`io_uring_enter` system call to tell the kernel that we’ve added requests to the submission queue. The kernel then does its jujitsu and once it has done processing those requests, it places results in the completion queue as part of a CQE or a completion queue entry one for each corresponding SQE. These CQEs can be accessed from user space instantly since they are placed in a buffer is shared by kernel and user space.
 
-We covered this particular advantage of ``io_uring`` earlier, but the astute reader would have noticed that this interface of filling up a queue with multiple I/O requests and then making a single system call as opposed to one system call for each I/O request is already more efficient. To take efficiency a notch further up, io_uring support a mode where the kernel polls for entries you make into the submission queue without you even having to call io_uring_enter() to inform the kernel about newer submission queue entries. Another point to note is that in a life after Specter and Meltdown hardware vulnerabilities were discovered and operating systems created workarounds for it, system calls are more expensive than ever. So, for high performance applications, reducing the number of system calls is a big deal indeed.
+We covered this particular advantage of ``io_uring`` earlier, but the astute reader would have noticed that this interface of filling up a queue with multiple I/O requests and then making a single system call as opposed to one system call for each I/O request is already more efficient. To take efficiency a notch further up, ``io_uring`` supports a mode where the :ref:`kernel polls for entries <sq_poll>` you make into the submission queue without you even having to call :c:func:`io_uring_enter` to inform the kernel about newer submission queue entries. Another point to note is that in a life after Specter and Meltdown hardware vulnerabilities were discovered and operating systems created workarounds for it, system calls are more expensive than ever. So, for high performance applications, reducing the number of system calls is a big deal indeed.
 
 Before you can do any of this, you need to setup the queues, which really are ring buffers with a certain depth/length. You call the :c:func:`io_uring_setup` system call to get this done. We do real work by adding submission queue entries to a ring buffer and reading completion queue entries off of the completion queue ring buffer. This is an overview of how this io_uring interface is designed.
 
 Completion Queue Entry
 ^^^^^^^^^^^^^^^^^^^^^^
-Now that we have a mental model of how things work, let’s look at how this is done in a bit more detail. Compared to the submission queue entry (SQE), the completion queue entry (CQE) is very simple. So, let’s look at it first. The SQE is a ``struct`` using which you submit requests. You add it to the submission ring buffer. The CQE is an instance of a ``struct`` which the kernel responds with for every SQE ``struct`` instance that is added to the submission queue. This contains the results of the operation you requested via an SQE instance.
+Now that we have a mental model of how things work, let’s look at how this is done in a bit more detail. Compared to the submission queue entry (SQE), the completion queue entry (CQE) is very simple. So, let’s look at it first. The SQE is a ``struct`` using which you submit requests. You add it to the submission ring buffer. The CQE is an instance of an ``io_uring_cqe`` structure which the kernel responds with for every ``io_uring_sqe`` structure instance that is added to the submission queue. This contains the results of the operation you requested via an SQE instance.
 
 .. code-block:: c
 
@@ -28,13 +28,13 @@ Now that we have a mental model of how things work, let’s look at how this is 
       __u32  flags;
     };
 
-As mentioned in the code comment, the user_data field is something that is passed as-is from the SQE to the CQE instance. Let’s say you submit a bunch of requests in the submission queue, it is not necessary that they complete in the same order and arrive on the completion queue. Take the following scenario for instance: You have tow disks on your machine: one is a slower spinning hard drive and another is a super-fast SSD. You submit 2 requests on the submission queue. The first one to read a 100kB file on the slower spinning hard disk and the second one to read a file of the same size on the faster SSD. If ordering were to be maintained, even though the data from the file on the SSD can be expected to arrive sooner, should the kernel wait for data from the file on the spinning hard drive to become available? Bad idea because this stops us from running as fast as we can. So, CQEs can arrive in any order as they become available. Whichever operation finishes quickly, it is immediately made available. Since there is no specified order in which CQEs arrive, given that now you know how a CQE looks like from the ``struct io_uring_cqe`` above, how do you identify the which SQE request a particular CQE corresponds to? One way to do that is to use the user_data field to identify it. Not that you’d set a unique ID or something, but you’d usually pass a pointer. If this is confusing, just wait till you see a clear example later on here.
+As mentioned in the code comment, the user_data field is something that is passed as-is from the SQE to the CQE instance. Let’s say you submit a bunch of requests in the submission queue, it is not necessary that they complete in the same order and show up on the completion queue as CQEs. Take the following scenario for instance: You have two disks on your machine: one is a slower spinning hard drive and another is a super-fast SSD. You submit 2 requests on the submission queue. The first one to read a 100kB file on the slower spinning hard disk and the second one to read a file of the same size on the faster SSD. If ordering were to be maintained, even though the data from the file on the SSD can be expected to arrive sooner, should the kernel wait for data from the file on the spinning hard drive to become available? Bad idea because this stops us from running as fast as we can. So, CQEs can arrive in any order as they become available. Whichever operation finishes, results for it are made available on the CQ. Since there is no specified order in which CQEs arrive, given that now you know how a CQE looks like from the ``io_uring_cqe`` structure above, how do you identify the which SQE request a particular CQE corresponds to? One way to do that is to use the ``user_data`` field common to both SQEs and CQEs to identify completions. Not that you’d set a unique ID or something, but you’d usually pass a pointer. If this is confusing, just wait till you see a clear example later on here.
 
-The completion queue entry is simple since it mainly concerns itself with a system call’s return value, which is returned in its res field. For example, if you queued a read operation, on successful completion, it would contain the number of bytes read. If there was an error, it would contain a negative error number. Essentially what the read() system call itself would return.
+The completion queue entry is simple since it mainly concerns itself with a system call’s return value, which is returned in its ``res`` field. For example, if you queued a read operation, on successful completion, it would contain the number of bytes read. If there was an error, it would contain a negative error number. Essentially what the :man:`read(2)` system call itself would return.
 
 Ordering
 ^^^^^^^^
-While I did mention that can CQEs arrive in any order, you can force ordering of certain operations with SQE ordering, in effect chaining them. I won’t be discussing ordering in this article series, but you can read the current canonical ``io_uring`` reference to see how to do this.
+While I did mention that can CQEs arrive in any order, you can force ordering of certain operations with SQE ordering, in effect chaining them. Please see the tutorial :ref:`link_liburing` for more details.
 
 Submission Queue Entry
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -64,18 +64,18 @@ The submission queue entry is a bit more complex than a completion queue entry s
     };
   };
 
-I know the ``struct`` looks busy. The fields that are used more commonly are only a few and this is easily explained with a simple example such as the one we’re dealing with: cat. You want to read a file using the :c:func:`readv` system call.
+I know the ``struct`` looks busy. The fields that are used more commonly are only a few and this is easily explained with a simple example such as the one we’re dealing with: cat. When you want to read a file using the :man:`readv(2)` system call:
 
-* opcode is used to specify the operation, in our case, :c:func:`readv` using the ``IORING_OP_READV`` constant.
-* ``fd`` is used to specify the file which we want to read from. Its open file descriptor is specified here
+* opcode is used to specify the operation, in our case, :man:`readv(2)` using the ``IORING_OP_READV`` constant.
+* ``fd`` is used to specify the file descriptor representing the file you want to read from.
 * ``addr`` is used to point to the array of ``iovec`` structures that hold the addresses and lengths of the buffers we’ve allocated for I/O.
 * finally, ``len`` is used to hold the length of the arrays of ``iovec`` structures.
 
-Now that wasn’t too difficult, or was it? You fill these values letting io_uring know what to do. You can queue multiple SQEs and finally call io_uring_enter() when you want the kernel to start processing your requests.
+Now that wasn’t too difficult, or was it? You fill these values letting ``io_uring`` know what to do. You can queue multiple SQEs and finally call :c:func:`io_uring_enter` when you want the kernel to start processing your queued requests.
 
 ``cat`` with io_uring
 ^^^^^^^^^^^^^^^^^^^^^
-Let’s see how to actually get this done in the ``io_uring`` version of our ``cat`` program.
+Let’s see how to actually get this done with a ``cat`` utility like program that uses the low-level ``io_uring`` interface.
 
 .. code-block:: c
 
@@ -408,7 +408,7 @@ Let's take a deeper dive into specific, important areas of the code and see how 
 
 The initial setup
 ^^^^^^^^^^^^^^^^^
-From :c:func:`main`, we call :c:func:`app_setup_uring`, which does the initialization work required for us to use ``io_uring``. First, we call the :c:func:`io_uring_setup` system call with the queue depth we require and an instance of the structure ``io_uring_params`` all set to zero. When the call returns, the kernel would have filled up values in the members of this structure. This is how ``io_uring_params`` looks like:
+From :c:func:`main`, we call :c:func:`app_setup_uring`, which does the initialization work required for us to use ``io_uring``. First, we call the :c:func:`io_uring_setup` system call with the queue depth we require and an instance of the structure :c:struct:`io_uring_params` all set to zero. When the call returns, the kernel would have filled up values in the members of this structure. This is how :c:struct:`io_uring_params` looks like:
 
 .. code-block:: c
 
@@ -423,9 +423,9 @@ From :c:func:`main`, we call :c:func:`app_setup_uring`, which does the initializ
     struct io_cqring_offsets cq_off;
   };
 
-The only thing you can specify before passing this structure as part of the :c:func:`io_uring_setup` system call is the flags structure member, but in this example, there is no flag we want to pass. Also, in this example, we process the files one after the other. We are not going to do any parallel I/O since this is a simple example designed mainly to get an understanding of ``io_uring``. To this end, we set the queue depth to just one.
+The only thing you can specify before passing this structure as part of the :c:func:`io_uring_setup` system call is the ``flags`` structure member, but in this example, there is no flag we want to pass. Also, in this example, we process the files one after the other. We are not going to do any parallel I/O since this is a simple example designed mainly to get an understanding of ``io_uring``'s raw interface. To this end, we set the queue depth to just one.
 
-The return value from :c:func:`io_uring_setup`, a file descriptor and other fields from the io_uring_param structure will subsequently used in calls to :c:func:`mmap` to map into user space two ring buffers and an array of submission queue entries. Take a look. I’ve removed some surrounding code to focus on the :c:func:`mmap` calls.
+The return value from :c:func:`io_uring_setup`, a file descriptor and other fields from the io_uring_param structure will subsequently used in calls to :man:`mmap(2)` to map into user space two ring buffers and an array of submission queue entries. Take a look. I’ve removed some surrounding code to focus on the :man:`mmap(2)` calls.
 
 .. code-block:: c
 
@@ -443,17 +443,17 @@ The return value from :c:func:`io_uring_setup`, a file descriptor and other fiel
             PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
             s->ring_fd, IORING_OFF_CQ_RING);
 
-We save important details in our structures ``app_io_sq_ring`` and ``app_io_cq_ring`` for easy reference later. While we map the two ring buffers for submission and completion each, you might be wondering what the 3rd mapping is for. While the completion queue ring directly indexes the shared array of CQEs, the submission ring has an indirection array in between. The submission side ring buffer is an index into this array, which in turn contains the index into the SQEs. This is useful for certain applications that embed submission requests inside of internal data structures. This setup allows them to submit multiple submission entries in one go while allowing them to adopt io_uring more easily.
+We save important details in our structures ``app_io_sq_ring`` and ``app_io_cq_ring`` for easy reference later. While we map the two ring buffers for submission and completion each, you might be wondering what the 3rd mapping is for. While the completion queue ring directly indexes the shared array of CQEs, the submission ring has an indirection array in between. The submission side ring buffer is an index into this array, which in turn contains the index into the SQEs. This is useful for certain applications that embed submission requests inside of internal data structures. This setup allows them to submit multiple submission entries in one go while allowing them to adopt ``io_uring`` more easily.
 
 Dealing with the shared ring buffers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-In regular programming, we’re used to dealing with a very clear interface between user-space and the kernel: the system call. However, system calls do have a cost and for high-performance interfaces like ``io_uring``, want to do away with them as much as they can. We saw earlier that rather than making multiple system calls as we normally do, using io_uring allows us to batch many I/O requests and make a single call to the :c:func:`io_uring_enter` system call. Or in polling mode, even that call isn’t required.
+In regular programming, we’re used to dealing with a very clear interface between user-space and the kernel: the system call. However, system calls do have a cost and for high-performance interfaces like ``io_uring``, want to do away with them as much as they can. We saw earlier that rather than making multiple system calls as we normally do, using ``io_uring`` allows us to batch many I/O requests and make a single call to the :c:func:`io_uring_enter` system call. Or in :ref:`polling mode <sq_poll>`, even that call isn’t required.
 
-When reading or updating the shared ring buffers from user space, there is some care that needs to be taken to ensure that when reading, you are seeing the latest data and after updating, you are “flushing” or “syncing” writes so that the kernel sees your updates. This is due to fact the the CPU can reorder reads and writes and so can the compiler. This is typically not a problem when this is happening on the same CPU. But in the case of io_uring, when there is a shared buffer involved across two different contexts: user space and kernel and these can run on different CPUs after a context switch. You need to ensure from user space that before you read, previous writes are visible. Or when you fill up details in an SQE and update the tail of the submission ring buffer, you want to ensure that the writes you made to the members of the SQE are ordered before the write that updates the ring buffer’s tail. If these writes aren’t ordered, the kernel might see the tail updated, but when it reads the SQE, it might not find all the data it needs at the time it reads it. In polling mode, where the kernel is looking for changes to the tail, this becomes a real problem. This is all because of how CPUs and compilers reorder reads and writes for optimization.
+When reading or updating the shared ring buffers from user space, there is some care that needs to be taken to ensure that when reading, you are seeing the latest data and after updating, you are “flushing” or “syncing” writes so that the kernel sees your updates. This is due to fact the the CPU can reorder reads and writes and so can the compiler. This is typically not a problem when reads and writes are happening on the same CPU. But in the case of ``io_uring``, when there is a shared buffer involved across two different contexts: user space and kernel and these can run on different CPUs after a context switch. You need to ensure from user space that before you read, previous writes are visible. Or when you fill up details in an SQE and update the tail of the submission ring buffer, you want to ensure that the writes you made to the members of the SQE are ordered before the write that updates the ring buffer’s tail. If these writes aren’t ordered, the kernel might see the tail updated, but when it reads the SQE, it might not find all the data it needs at the time it reads it. In :ref:`polling mode <sq_poll>`, where the kernel is looking for changes to the tail, this becomes a real problem. This is all because of how CPUs and compilers reorder reads and writes for optimization.
 
 Reading a completion queue entry
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-As always, we take up the completion side of things first since it is simpler than its submission counterpart. These explanations are even required because we need to discuss memory ordering and how we need to deal with it. Otherwise, we’re seeing how to deal with ring buffers. For completion events, the kernel adds CQEs to the ring buffer and updates the tail, while we read from the head in user space. As in any ring buffer, if the head and the tail are equal, it means the ring buffer is empty. Take a look at the code below:
+As always, we take up the completion side of things first since it is simpler than its submission counterpart. These explanations are even required because we need to discuss memory ordering and how we need to deal with it. Otherwise, we just want to see how to deal with ring buffers. For completion events, the kernel adds CQEs to the ring buffer and updates the tail, while we read from the head in user space. As in any ring buffer, if the head and the tail are equal, it means the ring buffer is empty. Take a look at the code below:
 
 .. code-block:: c
 
@@ -474,11 +474,11 @@ As always, we take up the completion side of things first since it is simpler th
   cqring->head = head;
   write_barrier();
 
-To get the index of the head, the application needs to mask head with the size mask of the ring buffer. Remember that any line in the code above could be running after a context switch. So, right before the comparison, we have a :c:func:`read_barrier` so that, if the kernel has indeed updated the tail, we can read it as part of our comparison in the if statement. Once we get the CQE and process it, we update the head letting the kernel know that we’ve consumed an entry from the ring buffer. The final :c:func:`write_barrier` ensures that writes we do become visible so that the kernel knows about it.
+To get the index of the head, the application needs to mask head with the size mask of the ring buffer. Remember that any line in the code above could be running after a context switch. So, right before the comparison, we have a :c:func:`read_barrier` so that, if the kernel has indeed updated the tail, we can read it as part of our comparison in the ``if`` statement. Once we get the CQE and process it, we update the head letting the kernel know that we’ve consumed an entry from the ring buffer. The final :c:func:`write_barrier` ensures that writes we do become visible so that the kernel knows about it.
 
 Making a submission
 ^^^^^^^^^^^^^^^^^^^
-Making a submission is the opposite of reading a completion. While in the completion the kernel added entries to the tail and we read an entry off the head of the ring buffer, when making a submission, we add to the tail and kernel reads entries off the head of the ring buffer.
+Making a submission is the opposite of reading a completion. While dealing with completion the kernel added entries to the tail and we read entries off the head of the ring buffer, when making a submission, we add to the tail and kernel reads entries off the head of the submission ring buffer.
 
 .. code-block:: c
 
@@ -496,8 +496,8 @@ Making a submission is the opposite of reading a completion. While in the comple
   sqring->tail = tail;
   write_barrier();
 
-In the code snippet above, the :c:func:`app_init_io` function in the application fills up details of the request for submission. Before the tail is updated, we have a :c:func:`write_barrier` to ensure that the previous writes are ordered before we update the tail. Then we update the tail and call :c:func:`write_barrier` once more to ensure that our update is seen. We’re lining up our ducks here.
+In the code snippet above, the :c:func:`app_init_io` function in the application fills up details of the request for submission. Before the tail is updated, we have a :c:func:`write_barrier` to ensure that the previous writes are ordered. Then we update the tail and call :c:func:`write_barrier` once more to ensure that our update is seen. We’re lining up our ducks here.
 
 Source code
 -----------
-This code and other examples in this documentation are available in this `Github repository <https://github.com/shuveb/io_uring-by-example>`_.
+This code and other examples in this documentation are available in this `Github repository <https://github.com/shuveb/loti-examples>`_.

@@ -9,6 +9,10 @@ In this example, we’ll look at an additional operation, accept() and how to do
 
 Here is the index page served via ZeroHTTPd:
 
+.. image:: ../_static/ZeroHTTPd_static.png
+    :align: center
+
+
 Let’s jump into the code now.
 
 .. code-block:: c
@@ -460,3 +464,167 @@ Let’s jump into the code now.
 			return 0;
 	}
 
+
+Program structure
+-----------------
+Before anything else, the ``main()`` function calls ``setup_listening_socket()`` to listen on the designated port. But we do not call ``accept()`` to actually accept connections. We do that through a request to ``io_uring`` as explained later.
+
+The core of the program is the ``server_loop()`` function, which issues submissions (itself and via other functions) to ``io_uring``, waits for completion queue entries and processes them. Let’s take a closer look at it.
+
+.. code-block:: c
+
+	void server_loop(int server_socket) {
+		struct io_uring_cqe *cqe;
+		struct sockaddr_in client_addr;
+		socklen_t client_addr_len = sizeof(client_addr);
+		add_accept_request(server_socket, &client_addr, &client_addr_len);
+		while (1) {
+			int ret = io_uring_wait_cqe(&ring, &cqe);
+			struct request *req = (struct request *) cqe->user_data;
+			if (ret < 0)
+				fatal_error("io_uring_wait_cqe");
+			if (cqe->res < 0) {
+				fprintf(stderr, "Async request failed: %s for event: %d\n",
+						strerror(-cqe->res), req->event_type);
+				exit(1);
+			}
+			switch (req->event_type) {
+				case EVENT_TYPE_ACCEPT:
+					add_accept_request(server_socket, &client_addr, &client_addr_len);
+					add_read_request(cqe->res);
+					free(req);
+					break;
+				case EVENT_TYPE_READ:
+					if (!cqe->res) {
+						fprintf(stderr, "Empty request!\n");
+						break;
+					}
+					handle_client_request(req);
+					free(req->iov[0].iov_base);
+					free(req);
+					break;
+				case EVENT_TYPE_WRITE:
+					for (int i = 0; i < req->iovec_count; i++) {
+						free(req->iov[i].iov_base);
+					}
+					close(req->client_socket);
+					free(req);
+					break;
+			}
+			/* Mark this request as processed */
+			io_uring_cqe_seen(&ring, cqe);
+		}   
+	}
+
+Right before we enter the ``while`` loop, we submit a request for ``accept()`` with a call to ``add_accept_request()``. This allows any client connection to the server to be accepted. Let’s take a closer look at that.
+
+.. code-block:: c
+
+	int add_accept_request(int server_socket, struct sockaddr_in *client_addr,
+						socklen_t *client_addr_len) {
+		struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+		io_uring_prep_accept(sqe, server_socket, (struct sockaddr *) client_addr,
+							client_addr_len, 0);
+		struct request *req = malloc(sizeof(*req));
+		req->event_type = EVENT_TYPE_ACCEPT;
+		io_uring_sqe_set_data(sqe, req);
+		io_uring_submit(&ring);
+		return 0;
+	}
+
+We get an SQE, and prepare an ``accept()`` operation to be submitted with :c:func:`io_uring_prep_accept` from ``liburing``. We use a ``struct request`` to track each of our submissions. These instances have the context of each request as it goes from one state to the next. Let’s take a look at struct request:
+
+.. code-block:: c
+
+	struct request {
+		int event_type;
+		int iovec_count;
+		int client_socket;
+		struct iovec iov[];
+	};
+
+There are 3 state that a client request goes through and the structure above can hold enough information to be able to handle transitions between these states. The three states of a client request are:
+
+Accepted -> Request read -> Response written
+
+Let’s take a look at what happens once an ``accept()`` operation completes in the large switch/case block on the completion side:
+
+.. code-block:: c
+
+           case EVENT_TYPE_ACCEPT:
+                add_accept_request(server_socket, &client_addr, &client_addr_len);
+                add_read_request(cqe->res);
+                free(req);
+                break;
+
+We add a new ``accept()`` request back in the submission queue now that we’ve processed the previous one. Else our program won’t be accepting any new connections from clients. We then call the ``add_read_request()`` function which adds a submission request for ``readv()`` so that we can read the HTTP request from the client. Couple of things here: We could have used ``read()``, but that operation isn’t supported in ``io_uring`` until kernel version 5.6, which, as of the time of this writing, is the bleeding edge stable version and won’t be found in many distributions for several months at least. Also, using ``readv()`` and ``writev()`` allows us to build in a lot of common logic, especially around buffer management as we’ll see later. Now, let’s look at ``add_read_request()``:
+
+.. code-block:: c
+
+	int add_read_request(int client_socket) {
+		struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+		struct request *req = malloc(sizeof(*req) + sizeof(struct iovec));
+		req->iov[0].iov_base = malloc(READ_SZ);
+		req->iov[0].iov_len = READ_SZ;
+		req->event_type = EVENT_TYPE_READ;
+		req->client_socket = client_socket;
+		memset(req->iov[0].iov_base, 0, READ_SZ);
+		/* Linux kernel 5.5 has support for readv, but not for recv() or read() */
+		io_uring_prep_readv(sqe, client_socket, &req->iov[0], 1, 0);
+		io_uring_sqe_set_data(sqe, req);
+		io_uring_submit(&ring);
+		return 0;
+	}
+
+As you can see, this is pretty straight-forward. We allocate a buffer large enough to hold the client request and issue a call to :c:func:`io_uring_prep_readv` which is in liburing before we submit the request. The corresponding handling on the completion side is done by the condition in the switch/case block:
+
+.. code-block:: c
+
+            case EVENT_TYPE_READ:
+                if (!cqe->res) {
+                    fprintf(stderr, "Empty request!\n");
+                    break;
+                }
+                handle_client_request(req);
+                free(req->iov[0].iov_base);
+                free(req);
+                break;
+
+Here, essentially we call the ``handle_client_request()`` function which deals with handling the HTTP request. If all goes well and it is a file on disk that the client is asking for, this is the piece of code that runs:
+
+.. code-block:: c
+
+            struct request *req = zh_malloc(sizeof(*req) + (sizeof(struct iovec) * 6));
+            req->iovec_count = 6;
+            req->client_socket = client_socket;
+            set_headers(final_path, path_stat.st_size, req->iov);
+            copy_file_contents(final_path, path_stat.st_size, &req->iov[5]);
+            printf("200 %s %ld bytes\n", final_path, path_stat.st_size);
+            add_write_request( req);
+
+The ``set_headers()`` function sets up a total of 5 small buffers represented by 5 different ``struct iovec`` structures. The final iovec instance contains the contents of the file being read. Finally, ``add_write_request()`` is called which adds a submissions queue entry:
+
+.. code-block:: c
+
+  int add_write_request(struct request *req) {
+      struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+      req->event_type = EVENT_TYPE_WRITE;
+      io_uring_prep_writev(sqe, req->client_socket, req->iov, req->iovec_count, 0);
+      io_uring_sqe_set_data(sqe, req);
+      io_uring_submit(&ring);
+      return 0;
+  }
+
+This submission causes the kernel to write out the response headers and the contents of the file over the client socket, thus completing the request/response cycle. Here is what we do on the completion side:
+
+.. code-block:: c
+
+              case EVENT_TYPE_WRITE:
+                  for (int i = 0; i < req->iovec_count; i++) {
+                      free(req->iov[i].iov_base);
+                  }
+                  close(req->client_socket);
+                  free(req);
+                  break;
+
+We free up how many ever ``iovec`` pointed buffers we created, free up the request structure instance and also close the client socket, thus completing serving of the HTTP request.
