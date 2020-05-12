@@ -78,7 +78,7 @@ Unfortunately, this makes file descriptors non-uniform under asynchronous progra
 
 Does this problem exist in io_uring?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-No. io_uring presents a uniform interface in dealing with sockets or regular files. Also, due to the design of the API, the program can get data that is read or written to files directly rather than knowing when a file descriptor is ready and then starting an I/O operation on it. This is not the only advantage that ``io_uring`` has over existing Linux asynchronous I/O APIs. We'll discuss that in the upcoming sections.
+No. ``io_uring`` presents a uniform interface whether dealing with sockets or with regular files. Also, due to the design of the API, programs can get data that is read or written to files descriptors directly rather than knowing when a file descriptor is ready and then starting an I/O operation on it subsequently, as is done with :man:`poll(2)` or :man:`epoll(7)`. This is not the only advantage that ``io_uring`` has over existing Linux asynchronous I/O APIs. We'll discuss more in upcoming sections.
 
 .. rubric:: Footnotes
 .. [#] While creating threads or processes under Linux are both done with the :man:`clone(2)` system call and incur the same overhead, right after creation, if a child process, which shared a read-only copy of the parent's address space writes to its pages, the kernel creates a copy of the parent's address space for the child, which is real overhead. Threads in a process share the address space and thus do not incur this copying overhead.
