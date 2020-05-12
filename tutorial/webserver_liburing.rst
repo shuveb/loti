@@ -465,6 +465,22 @@ Let’s jump into the code now.
 	}
 
 
+Running this program
+--------------------
+This program requires that you run it from the directory that contains the "public" folder that has an ``index.html`` file and an image to go with it. If you followed the `build instructions <https://github.com/shuveb/loti-examples>`_ to the example programs, your newly built binary should be in the ``build`` directory. You need to change into the git repo's root directory where the "public" folder resides and run it. An sample session where you build all examples and run the this webserver example would look like this:
+
+.. code-block:: none 
+
+	$ mkdir build
+	$ cd build
+	$ cmake ..
+	$ cmake --build .
+	$ cd ..
+	$ build/webserver_liburing
+	Minimum kernel version required is: 5.5
+	Your kernel version is: 5.6
+	ZeroHTTPd listening on port: 8000
+
 Program structure
 -----------------
 Before anything else, the ``main()`` function calls ``setup_listening_socket()`` to listen on the designated port. But we do not call ``accept()`` to actually accept connections. We do that through a request to ``io_uring`` as explained later.
