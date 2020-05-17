@@ -11,7 +11,7 @@ Welcome to Lord of the io_uring
 
 About
 -----
-This ``io_uring`` guide was created by `Shuveb Hussain <https://twitter.com/shuveb>`_, who is also the author of the Linux-focused blog, `unixism.net <https://unixism.net>`_.
+This ``io_uring`` guide was created by Shuveb Hussain, who is also the author of the Linux-focused blog, `unixism.net <https://unixism.net>`_. You can `follow me on Twitter <https://twitter.com/shuveb>`_ where my posts are mainly tech-related with a focus on Linux, performance, scalability and cloud.
 
 Contributing
 ------------
