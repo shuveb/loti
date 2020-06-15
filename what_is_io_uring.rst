@@ -18,7 +18,7 @@ The mental model
 The mental model you need to construct in order to use ``io_uring`` to build programs that process I/O asynchronously is fairly simple. 
 
 * There are 2 ring buffers, one for submission of requests (submission queue or SQ) and the other that informs you about completion of those requests (completion queue or CQ).
-* These ring buffers are shared between kernel and user space. You set these up with :c:func:`io_uring_setup` and then mapping them into user space with 3 :man:`mmap(2)` calls.
+* These ring buffers are shared between kernel and user space. You set these up with :c:func:`io_uring_setup` and then mapping them into user space with 2 :man:`mmap(2)` calls.
 * You tell io_uring what you need to get done (read or write a file, accept client connections, etc), which you describe as part of a submission queue entry (SQE) and add it to the tail of the submission ring buffer.
 * You then tell the kernel via the :c:func:`io_uring_enter` system call that you've added an SQE to the submission queue ring buffer. You can add multiple SQEs before making the system call as well.
 * Optionally, :c:func:`io_uring_enter` can also wait for a number of requests to be processed by the kernel before it returns so you know you're ready to read off the completion queue for results.
@@ -27,9 +27,12 @@ The mental model you need to construct in order to use ``io_uring`` to build pro
 * You continue adding SQEs and reaping CQEs as you need.
 * There is a :ref:`polling mode available <sq_poll>`, in which the kernel polls for new entries in the submission queue. This avoids the system call overhead of calling :c:func:`io_uring_enter` every time you submit entries for processing.
 
+.. seealso::
+    * :ref:`low_level`
+
 io_uring performance
 --------------------
-Because of the shared ring buffers between the kernel and user space, io_uring can be a zero-copy system. Copying bytes around becomes necessary when there are system calls that transfer data between kernel and user space are involved. But since the bulk of the communication in ``io_uring`` is via buffers shared between the kernel and user space, this huge performance overhead is completely avoided. While system calls (and we're used to making them a lot) many not seem like a significant overhead, in high performance applications, making a lot of them will begin to matter. Also, system calls are not as cheap as they used to be. Throw in the workarounds the operating system has in place to deal with `Specter and Meltdown <https://meltdownattack.com/>`_, we are talking about non-trivial overheads. So, avoiding system calls as much as possible is a fantastic idea in high-performance applications indeed.
+Because of the shared ring buffers between the kernel and user space, io_uring can be a zero-copy system. Copying bytes around becomes necessary when system calls that transfer data between kernel and user space are involved. But since the bulk of the communication in ``io_uring`` is via buffers shared between the kernel and user space, this huge performance overhead is completely avoided. While system calls (and we're used to making them a lot) many not seem like a significant overhead, in high performance applications, making a lot of them will begin to matter. Also, system calls are not as cheap as they used to be. Throw in workarounds the operating system has in place to deal with `Specter and Meltdown <https://meltdownattack.com/>`_, we are talking non-trivial overheads. So, avoiding system calls as much as possible is a fantastic idea in high-performance applications indeed.
 
 While using synchronous programming interfaces or even when using asynchronous programming interfaces under Linux, there is at least one system call involved in the submission of each request. In ``io_uring``, you can add several requests, simply by adding multiple SQEs each describing the I/O operation you want and make a single call to io_uring_enter. For starers, that's a win right there. But it gets better.
 
