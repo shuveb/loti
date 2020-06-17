@@ -71,6 +71,12 @@ Documentation
     ref-iouring/io_uring_enter
     ref-iouring/io_uring_register
 
+.. toctree::
+    :maxdepth: 1
+    :caption: Changelog
+
+    changelog.rst
+
 Indices and tables
 ==================
 
