@@ -18,7 +18,7 @@ Before you can do any of this, you need to setup the queues, which really are ri
 
 Completion Queue Entry
 ^^^^^^^^^^^^^^^^^^^^^^
-Now that we have a mental model of how things work, let’s look at how this is done in a bit more detail. Compared to the submission queue entry (SQE), the completion queue entry (CQE) is very simple. So, let’s look at it first. The SQE is a ``struct`` using which you submit requests. You add it to the submission ring buffer. The CQE is an instance of an ``io_uring_cqe`` structure which the kernel responds with for every ``io_uring_sqe`` structure instance that is added to the submission queue. This contains the results of the operation you requested via an SQE instance.
+Now that we have a mental model of how things work, let’s look at how this is done in a bit more detail. Compared to the submission queue entry (SQE), the completion queue entry (CQE) is very simple. So, let’s look at it first. The SQE is an instance of an ``io_uring_sqe struct`` using which you submit requests. You add it to the submission ring buffer. The CQE is an instance of an ``io_uring_cqe`` structure which the kernel responds with for every ``io_uring_sqe`` structure instance that is added to the submission queue. This contains the results of the operation you requested via an SQE instance.
 
 .. code-block:: c
 
