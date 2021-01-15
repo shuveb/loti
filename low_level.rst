@@ -94,8 +94,8 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     #include <string.h>
 
     /* If your compilation fails because the header file below is missing,
-    * your kernel is probably too old to support io_uring.
-    * */
+     * your kernel is probably too old to support io_uring.
+     * */
     #include <linux/io_uring.h>
 
     #define QUEUE_DEPTH 1
@@ -135,10 +135,10 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     };
 
     /*
-    * This code is written in the days when io_uring-related system calls are not
-    * part of standard C libraries. So, we roll our own system call wrapper
-    * functions.
-    * */
+     * This code is written in the days when io_uring-related system calls are not
+     * part of standard C libraries. So, we roll our own system call wrapper
+     * functions.
+     * */
 
     int io_uring_setup(unsigned entries, struct io_uring_params *p)
     {
@@ -146,16 +146,16 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     }
 
     int io_uring_enter(int ring_fd, unsigned int to_submit,
-                            unsigned int min_complete, unsigned int flags)
+                              unsigned int min_complete, unsigned int flags)
     {
         return (int) syscall(__NR_io_uring_enter, ring_fd, to_submit, min_complete,
-                    flags, NULL, 0);
+                       flags, NULL, 0);
     }
 
     /*
-    * Returns the size of the file whose open file descriptor is passed in.
-    * Properly handles regular file and block devices as well. Pretty.
-    * */
+     * Returns the size of the file whose open file descriptor is passed in.
+     * Properly handles regular file and block devices as well. Pretty.
+     * */
 
     off_t get_file_size(int fd) {
         struct stat st;
@@ -178,13 +178,13 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     }
 
     /*
-    * io_uring requires a lot of setup which looks pretty hairy, but isn't all
-    * that difficult to understand. Because of all this boilerplate code,
-    * io_uring's author has created liburing, which is relatively easy to use.
-    * However, you should take your time and understand this code. It is always
-    * good to know how it all works underneath. Apart from bragging rights,
-    * it does offer you a certain strange geeky peace.
-    * */
+     * io_uring requires a lot of setup which looks pretty hairy, but isn't all
+     * that difficult to understand. Because of all this boilerplate code,
+     * io_uring's author has created liburing, which is relatively easy to use.
+     * However, you should take your time and understand this code. It is always
+     * good to know how it all works underneath. Apart from bragging rights,
+     * it does offer you a certain strange geeky peace.
+     * */
 
     int app_setup_uring(struct submitter *s) {
         struct app_io_sq_ring *sring = &s->sq_ring;
@@ -193,10 +193,10 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         void *sq_ptr, *cq_ptr;
 
         /*
-        * We need to pass in the io_uring_params structure to the io_uring_setup()
-        * call zeroed out. We could set any flags if we need to, but for this
-        * example, we don't.
-        * */
+         * We need to pass in the io_uring_params structure to the io_uring_setup()
+         * call zeroed out. We could set any flags if we need to, but for this
+         * example, we don't.
+         * */
         memset(&p, 0, sizeof(p));
         s->ring_fd = io_uring_setup(QUEUE_DEPTH, &p);
         if (s->ring_fd < 0) {
@@ -205,22 +205,22 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         }
 
         /*
-        * io_uring communication happens via 2 shared kernel-user space ring buffers,
-        * which can be jointly mapped with a single mmap() call in recent kernels. 
-        * While the completion queue is directly manipulated, the submission queue 
-        * has an indirection array in between. We map that in as well.
-        * */
+         * io_uring communication happens via 2 shared kernel-user space ring buffers,
+         * which can be jointly mapped with a single mmap() call in recent kernels. 
+         * While the completion queue is directly manipulated, the submission queue 
+         * has an indirection array in between. We map that in as well.
+         * */
 
         int sring_sz = p.sq_off.array + p.sq_entries * sizeof(unsigned);
         int cring_sz = p.cq_off.cqes + p.cq_entries * sizeof(struct io_uring_cqe);
 
         /* In kernel version 5.4 and above, it is possible to map the submission and 
-        * completion buffers with a single mmap() call. Rather than check for kernel 
-        * versions, the recommended way is to just check the features field of the 
-        * io_uring_params structure, which is a bit mask. If the 
-        * IORING_FEAT_SINGLE_MMAP is set, then we can do away with the second mmap()
-        * call to map the completion ring.
-        * */
+         * completion buffers with a single mmap() call. Rather than check for kernel 
+         * versions, the recommended way is to just check the features field of the 
+         * io_uring_params structure, which is a bit mask. If the 
+         * IORING_FEAT_SINGLE_MMAP isset, then we can do away with the second mmap()
+         * call to map the completion ring.
+         * */
         if (p.features & IORING_FEAT_SINGLE_MMAP) {
             if (cring_sz > sring_sz) {
                 sring_sz = cring_sz;
@@ -229,8 +229,8 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         }
 
         /* Map in the submission and completion queue ring buffers.
-        * Older kernels only map in the submission queue, though.
-        * */
+         * Older kernels only map in the submission queue, though.
+         * */
         sq_ptr = mmap(0, sring_sz, PROT_READ | PROT_WRITE, 
                 MAP_SHARED | MAP_POPULATE,
                 s->ring_fd, IORING_OFF_SQ_RING);
@@ -252,7 +252,7 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
             }
         }
         /* Save useful fields in a global app_io_sq_ring struct for later
-        * easy reference */
+         * easy reference */
         sring->head = sq_ptr + p.sq_off.head;
         sring->tail = sq_ptr + p.sq_off.tail;
         sring->ring_mask = sq_ptr + p.sq_off.ring_mask;
@@ -270,7 +270,7 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         }
 
         /* Save useful fields in a global app_io_cq_ring struct for later
-        * easy reference */
+         * easy reference */
         cring->head = cq_ptr + p.cq_off.head;
         cring->tail = cq_ptr + p.cq_off.tail;
         cring->ring_mask = cq_ptr + p.cq_off.ring_mask;
@@ -281,10 +281,10 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     }
 
     /*
-    * Output a string of characters of len length to stdout.
-    * We use buffered output here to be efficient,
-    * since we need to output character-by-character.
-    * */
+     * Output a string of characters of len length to stdout.
+     * We use buffered output here to be efficient,
+     * since we need to output character-by-character.
+     * */
     void output_to_console(char *buf, int len) {
         while (len--) {
             fputc(*buf++, stdout);
@@ -292,10 +292,10 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     }
 
     /*
-    * Read from completion queue.
-    * In this function, we read completion events from the completion queue, get
-    * the data buffer that will have the file data and print it to the console.
-    * */
+     * Read from completion queue.
+     * In this function, we read completion events from the completion queue, get
+     * the data buffer that will have the file data and print it to the console.
+     * */
 
     void read_from_cq(struct submitter *s) {
         struct file_info *fi;
@@ -308,9 +308,9 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         do {
             read_barrier();
             /*
-            * Remember, this is a ring buffer. If head == tail, it means that the
-            * buffer is empty.
-            * */
+             * Remember, this is a ring buffer. If head == tail, it means that the
+             * buffer is empty.
+             * */
             if (head == *cring->tail)
                 break;
 
@@ -333,12 +333,12 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         write_barrier();
     }
     /*
-    * Submit to submission queue.
-    * In this function, we submit requests to the submission queue. You can submit
-    * many types of requests. Ours is going to be the readv() request, which we
-    * specify via IORING_OP_READV.
-    *
-    * */
+     * Submit to submission queue.
+     * In this function, we submit requests to the submission queue. You can submit
+     * many types of requests. Ours is going to be the readv() request, which we
+     * specify via IORING_OP_READV.
+     *
+     * */
     int submit_to_sq(char *file_path, struct submitter *s) {
         struct file_info *fi;
 
@@ -366,11 +366,11 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         fi->file_sz = file_sz;
 
         /*
-        * For each block of the file we need to read, we allocate an iovec struct
-        * which is indexed into the iovecs array. This array is passed in as part
-        * of the submission. If you don't understand this, then you need to look
-        * up how the readv() and writev() system calls work.
-        * */
+         * For each block of the file we need to read, we allocate an iovec struct
+         * which is indexed into the iovecs array. This array is passed in as part
+         * of the submission. If you don't understand this, then you need to look
+         * up how the readv() and writev() system calls work.
+         * */
         while (bytes_remaining) {
             off_t bytes_to_read = bytes_remaining;
             if (bytes_to_read > BLOCK_SZ)
@@ -412,11 +412,11 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
         }
 
         /*
-        * Tell the kernel we have submitted events with the io_uring_enter() system
-        * call. We also pass in the IOURING_ENTER_GETEVENTS flag which causes the
-        * io_uring_enter() call to wait until min_complete events (the 3rd param)
-        * complete.
-        * */
+         * Tell the kernel we have submitted events with the io_uring_enter() system
+         * call. We also pass in the IOURING_ENTER_GETEVENTS flag which causes the
+         * io_uring_enter() call to wait until min_complete events (the 3rd param)
+         * complete.
+         * */
         int ret =  io_uring_enter(s->ring_fd, 1,1,
                 IORING_ENTER_GETEVENTS);
         if(ret < 0) {
@@ -428,36 +428,31 @@ Let’s see how to actually get this done with a ``cat`` utility like program th
     }
 
     int main(int argc, char *argv[]) {
-        struct submitter *s;
+        struct submitter s;
 
         if (argc < 2) {
             fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
             return 1;
         }
 
-        s = malloc(sizeof(*s));
-        if (!s) {
-            perror("malloc");
-            return 1;
-        }
-        memset(s, 0, sizeof(*s));
+        memset(&s, 0, sizeof(s));
 
-        if(app_setup_uring(s)) {
+        if(app_setup_uring(&s)) {
             fprintf(stderr, "Unable to setup uring!\n");
             return 1;
         }
 
         for (int i = 1; i < argc; i++) {
-            if(submit_to_sq(argv[i], s)) {
+            if(submit_to_sq(argv[i], &s)) {
                 fprintf(stderr, "Error reading file\n");
                 return 1;
             }
-            read_from_cq(s);
+            read_from_cq(&s);
         }
 
         return 0;
     }
-
+ 
 Explanation
 -----------
 Let's take a deeper dive into specific, important areas of the code and see how this example program works.
