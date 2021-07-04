@@ -101,7 +101,7 @@ Advanced usage
     * `files`: array of file descriptors.
     * `nr_files`: number of file descriptors in the array supplied.
 
-    **Return value**: returns 0 on success and ``-errono`` on failure. You can use :man:`strerror(3)` to get a human readable version of the reason for failure.
+    **Return value**: returns number of files updated on success and ``-errono`` on failure. You can use :man:`strerror(3)` to get a human readable version of the reason for failure.
 
 .. seealso::
     
