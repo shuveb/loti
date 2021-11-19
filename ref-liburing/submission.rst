@@ -23,7 +23,7 @@ Submitting an I/O request is a sequence that generally looks like this:
 
 This snippet is from the example :ref:`cat with liburing<cat_liburing>`.
 
-You call :c:func:`io_ring_get_sqe` to get an submission queue entry or SQE, use one of the submission helpers for the type of I/O you're trying to get done like :c:func:`io_uring_prep_readv` or :c:func:`io_uring_prep_accept`, call :c:func:`io_uring_set_sqe_data` to get a pointer to a a data structure that uniquely identifies this request (you get this same user data back on the completion side), and finally call :c:func:`io_uring_submit` to submit the request.
+You call :c:func:`io_uring_get_sqe` to get an submission queue entry or SQE, use one of the submission helpers for the type of I/O you're trying to get done like :c:func:`io_uring_prep_readv` or :c:func:`io_uring_prep_accept`, call :c:func:`io_uring_set_sqe_data` to get a pointer to a a data structure that uniquely identifies this request (you get this same user data back on the completion side), and finally call :c:func:`io_uring_submit` to submit the request.
 
 You can also set up polling as to avoid calling the :c:func:`io_uring_submit` system call. TODO: link polling example here.
 
