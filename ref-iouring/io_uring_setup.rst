@@ -122,7 +122,7 @@ supported by current kernel version.
    events. If a completion event occurs and the CQ ring is full, the
    kernel stores the event internally until such a time that the CQ ring
    has room for more entries. If this overflow condition is entered,
-   attempting to submit more IO with fail with the **-EBUSY** error
+   attempting to submit more IO will fail with the **-EBUSY** error
    value, if it can't flush the overflown events to the CQ ring. If this
    happens, the application must reap events from the CQ ring and
    attempt the submit again.
