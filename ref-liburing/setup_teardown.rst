@@ -111,7 +111,7 @@ TODO: Are the below two structs really required? Remove them if they are only us
 
     **Return value**: returns 0 on success and ``-errono`` on failure. You can use :man:`strerror(3)` to get a human readable version of the reason for failure.
 
-    .. seealso:: :man:`madvice(2)`, especially ``MADV_DONTFORK``.
+    .. seealso:: :man:`madvise(2)`, especially ``MADV_DONTFORK``.
 
 ----
 
