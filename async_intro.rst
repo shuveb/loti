@@ -16,7 +16,7 @@ Why asynchronous programming?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 If you are going to be building something that deals with thousands or even hundreds of thousands of requests per hour, you need not bother with asynchronous I/O. Application frameworks that are designed around thread pool based architectures will serve you just fine. But if you are looking at efficiently dealing with millions of requests per hour and you care about efficiency, you might want to look at asynchronous programming more closely. Asynchronous programming avoids the operating system’s thread/process context switching overhead by processing much of the I/O in a single thread. The operating system's context switching overhead may not seem like much, but it starts to matter when you are dealing with significant scale and concurrency.
 
-Consider the following figure as depicting what happens in with a set of requests in one second. Threads move from blocked to running states. While it is clear what happens in the single threaded and multi-threaded apps, how asynchronous programming works can be a little tricky to understand, although it is no rocket science. I'm hoping the figure below will aid in your understanding.
+Consider the following figure as depicting what happens with a set of requests in one second. Threads move from blocked to running states. While it is clear what happens in the single threaded and multi-threaded apps, how asynchronous programming works can be a little tricky to understand, although it is no rocket science. I'm hoping the figure below will aid in your understanding.
 
 .. image:: _static/Linux_Process_Models.jpg
     :align: center
