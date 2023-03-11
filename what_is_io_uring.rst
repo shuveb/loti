@@ -48,7 +48,7 @@ Writing a small program that reads files and prints them on to the console, like
 
 Just use liburing
 -----------------
-While being acquainted with the low-level ``io_uring`` API is most certainly a good thing, in real, serious programs you probably want to use the higher-level interface provided by liburing. Programs like `QEMU <https://qemu.org>`_ already use it. If liburing never existed, you'd have built some abstraction layer over the low-lever ``io_uring`` interface. liburing does that for you and it is a well thought-out interface as well. In short, you should probably put in some effort to understand how the low-level ``io_uring`` interface works, but by default you should really be using ``liburing`` in your programs. 
+While being acquainted with the low-level ``io_uring`` API is most certainly a good thing, in real, serious programs you probably want to use the higher-level interface provided by liburing. Programs like `QEMU <https://qemu.org>`_ already use it. If liburing never existed, you'd have built some abstraction layer over the low-level ``io_uring`` interface. liburing does that for you and it is a well thought-out interface as well. In short, you should probably put in some effort to understand how the low-level ``io_uring`` interface works, but by default you should really be using ``liburing`` in your programs. 
 
 While there is a reference section here for it, there are some examples based on ``liburing`` we'll see in the subsequent chapters.
 
