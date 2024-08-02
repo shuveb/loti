@@ -6,7 +6,7 @@ Like suggested in the previous session, you are unlikely to use the low-level ``
 
 Familiarity with the :man:`readv(2)` system call
 ------------------------------------------------
-To get a good understanding of this example, you will need to be familiar with the :man:`readv(2)` system call. If you aren't familiar with it, I suggest you read `a more gentler <https://unixism.net/2020/04/io-uring-by-example-part-1-introduction/>`_ introduction and then return back here to continue.
+To get a good understanding of this example, you will need to be familiar with the :man:`readv(2)` system call. If you aren't familiar with it, I suggest you read `a gentler <https://unixism.net/2020/04/io-uring-by-example-part-1-introduction/>`_ introduction and then return back here to continue.
 
 Introduction to the low-level interface
 ---------------------------------------
