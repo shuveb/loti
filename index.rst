@@ -19,7 +19,7 @@ The source code repository for this guide is `here on Github <https://github.com
 
 Source code for examples
 ------------------------
-Source code for all example programs in this guide are available `on Github <https://github.com/shuveb/loti-examples>`_. If you find bugs in the examples, please raise issues on Github. I want to keep these examples simple and to the point. I many not merge pull requests that add features for that reason. Pull requests that fix bugs are welcome.
+Source code for all example programs in this guide are available `on Github <https://github.com/shuveb/loti-examples>`_. If you find bugs in the examples, please raise issues on Github. I want to keep these examples simple and to the point. I might not merge pull requests that add features for that reason. Pull requests that fix bugs are welcome.
 
 Documentation
 -------------
